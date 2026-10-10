@@ -8,7 +8,7 @@
 #define FELUCCA_ID "FM-1_800"    /* package identity (build.py: the .fwsc marker string) */
 #endif
 #ifndef FELUCCA_VERSION
-#define FELUCCA_VERSION "M1-0.8"
+#define FELUCCA_VERSION "M1-0.9"
 #endif
 #define FELUCCA_FLASH 1
 #define FELUCCA_OTA 1
@@ -59,4 +59,5 @@ static int m1_slot_info(uint32_t slot, char *name, uint32_t *len);
 #ifdef M1_BENCH
 #include "bench.c"
 #endif
+#include "ui.c"
 #include "main.c"

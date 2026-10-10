@@ -23,6 +23,26 @@ export interface ParamDef {
   unit?: string;
   /** names for integer-valued choice params (waveform etc.) */
   choices?: string[];
+  /** logarithmic: the range is covered in equal ratios (a filter cutoff in octaves). Modulation and the knobs move the value in
+   * that space: a fraction of the range is a fraction of the octaves. */
+  log?: boolean;
+}
+
+/** position of a value in its range, 0..1 (logarithmic for log parameters) */
+export function toUnit(pd: ParamDef, v: number): number {
+  const x = Math.min(pd.max, Math.max(pd.min, v));
+  return pd.log ? Math.log(x / pd.min) / Math.log(pd.max / pd.min) : (x - pd.min) / (pd.max - pd.min);
+}
+
+export function fromUnit(pd: ParamDef, u: number): number {
+  const x = Math.min(1, Math.max(0, u));
+  return pd.log ? pd.min * Math.pow(pd.max / pd.min, x) : pd.min + x * (pd.max - pd.min);
+}
+
+/** a parameter's base value moved by `mod` of its range (mean of a parameter input x attenuverter), clamped */
+export function modulate(pd: ParamDef, base: number, mod: number): number {
+  if (!pd.log) return Math.min(pd.max, Math.max(pd.min, base + mod * (pd.max - pd.min)));
+  return fromUnit(pd, toUnit(pd, base) + mod);
 }
 
 export interface ModuleDef {

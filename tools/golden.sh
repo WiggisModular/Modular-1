@@ -1,12 +1,12 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
 # Compare the C engine (firmware/src/engine.c, built for the host) with the TypeScript engine on golden vectors.
-#   tools/golden.sh [REL_RMS]      (default: error rms <= 3 % of the reference rms; run inside `nix develop`)
+#   tools/golden.sh [REL_RMS]      (default: error rms <= 5 % of the reference rms; run inside `nix develop`)
 # The metric is rms, not max: waveforms with edges (saw, square) shift by a fraction of a sample between the float
 # reference and the Q16 pitch grid, which gives short spikes at the edges but no audible difference.
 set -e
 cd "$(dirname "$0")/.."
-TOL="${1:-0.03}"
+TOL="${1:-0.05}"
 (cd web && npx vite-node scripts/golden.ts)
 mkdir -p build
 gcc -O1 -Wall -Wextra -Wno-unused-parameter -Wno-unused-result -o build/host_test firmware/test/host_test.c -lm

@@ -183,9 +183,19 @@ $('audio-btn').onclick = async () => {
   }
 };
 attachKeyboard(sink, () => currentTab === 'patch');
-attachMidi(sink, (s) => {
-  if (!host.running) status.textContent = s;
-});
+// Web MIDI is only asked for on request: while a page holds MIDI access, Chromium's ALSA backend tracks every MIDI port on the
+// system and aborts the whole browser (SIGILL in midi::MidiManager::SetInputPortState) when the ports change, for example when
+// the FM-1 re-enumerates after a reset or a firmware update.
+$('midi-btn').onclick = () => {
+  $('midi-btn').setAttribute('disabled', '');
+  void attachMidi(sink, (s) => {
+    if (!host.running) status.textContent = s;
+  });
+};
+$('dev-release').onclick = () => {
+  save(editor.patch); // the patch is remembered; reloading the page is what drops the MIDI access
+  location.reload();
+};
 
 // tabs
 buildBankTab($('tab-presets'), device, () => editor.patch, (msg) => {
@@ -195,7 +205,7 @@ buildBankTab($('tab-presets'), device, () => editor.patch, (msg) => {
 buildFlashTab($('tab-flash'));
 $('tab-about').innerHTML = `
   <div class="card"><h2>Modular-1</h2>
-  <p>A patchable modular synth for the M-VAVE FM-1, with a browser editor. The module engine runs in your browser here and (in a later milestone) on the FM-1 itself.</p>
+  <p>A patchable modular synth for the M-VAVE FM-1, with a browser editor. The module engine runs in your browser here and on the FM-1 itself.</p>
   <p class="muted">GPL-3.0-only. The flasher, loader and hardware layer are derived from <a href="https://github.com/hugelton/Felucca">Felucca</a> by Leo Kuroshita / Hügelton Instruments. Not affiliated with M-VAVE or Clavia.</p></div>`;
 for (const b of document.querySelectorAll<HTMLButtonElement>('#tabs button')) {
   b.onclick = () => {

@@ -30,6 +30,7 @@
         <span class="spacer"></span>
         <button id="save-btn">Save .json</button>
         <label class="btn">Load .json<input id="load-file" type="file" accept="application/json,.json" hidden /></label>
+        <button id="midi-btn" title="Play the editor from a MIDI keyboard. Not enabled by default: see About">Enable MIDI keyboard</button>
         <button id="panic-btn">Panic</button>
       </div>
       <div class="toolbar" id="device-bar">
@@ -37,6 +38,7 @@
         <label><input id="dev-live" type="checkbox" disabled /> Live (patch, knobs and keys go to the FM-1)</label>
         <button id="dev-send" disabled>Send patch</button>
         <button id="dev-store" disabled>Store on FM-1</button>
+        <button id="dev-release" title="Let go of the MIDI ports (reloads the page): do this before unplugging, resetting or flashing the FM-1">Release MIDI</button>
         <span id="dev-status" class="muted"></span>
       </div>
       <div id="canvas" class="canvas"><svg id="cables" class="cables"></svg><div id="modules"></div></div>

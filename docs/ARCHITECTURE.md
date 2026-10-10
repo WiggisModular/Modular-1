@@ -59,3 +59,14 @@ Per 128-frame block (2902 us of audio), interrupts off, 16 repetitions, 1 us res
 | float to int16 per frame | 116 | 17 |
 
 Conclusions: the core has no FPU (float links against `libcompiler-rt.a` soft float) and float is 40 to 70 times slower, so the audio path is **fixed point only** (Q15 samples, 32-bit accumulators, no float, no 64-bit division). Float is acceptable only at control rate (per block), and better avoided. The fixed kernels are tiny; real modules will cost several times their bare kernel (buffer traffic, modulation, CV), so plan for tens of module instances, and measure the real engine before promising more. The 1 us resolution makes the fixed numbers coarse (+-1 us).
+
+## Panel buttons, saved state, LCD (M1-0.9)
+
+- **OCT- / OCT+** (matrix buttons 0 / 1) shift the keys by up to three octaves (shown as `OCT +1`, the button LEDs light while shifted); a held key ends the note it started. **SAVE** (button 9) writes the current state to flash: the patch with its edited parameters, the octave, the selected module and the preset index (the unused words of the current-patch header). Any other button shows `BTN n` in the header so it can be assigned. The button ids are Felucca's panel table; only PLAY and REC there were measured on hardware.
+- **LCD** (`firmware/src/ui.c`, previewed on the host with `tools/ui_preview.sh OUT.png PRESET [MODULE [OCTAVE]]`): patch name and CPU, a picture of the patch (modules as coloured boxes in columns by depth, cables as lines, the selected module framed), the selected module with the four knob rows, and the two parameter inputs with their attenuverters and assignments. Choice parameters show their names (SAW, TRIANGLE, S&H), numbers their units (180 HZ, 3.19 OCT) and the value the sound really uses (base plus modulation). With the FM-1 panel selected the rows name where each knob goes (`K1 FILTER CUTOFF`, found from the cables and the target's matrix) and show the knob's position as a bar.
+
+## Reverb, logarithmic cutoff, default knob routing
+
+- **Reverb module**: Freeverb-style, mono: four damped feedback combs in parallel into two allpasses; parameters size, damp, mix. State is int16 (Q13) in the pool (about 12 KB per instance, two per patch).
+- **Logarithmic parameters**: `ParamDef.log` (the filter cutoff): parameter inputs, the editor slider and the knobs move it in octaves, so a fraction of the range is a fraction of the octaves (`modulate` in `patch.ts`, `eng_step_param` and the log2 / exp2 tables in `engine.c`).
+- **Knobs in the factory presets** (`KNOBS` in `presets.ts`): every preset routes K1..K4 from its FM-1 panel module to useful parameters. Rules: K1 is the filter cutoff when there is a filter, K4 the delay mix when there is a delay, K3 the reverb mix when there is a reverb. The panel knobs start at the position that leaves the preset's sound as designed (a test checks this and the rules).

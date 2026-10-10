@@ -15,6 +15,8 @@ typedef struct {
 } ps_hdr_t;
 
 static uint8_t ps_buf[M1_PATCH_MAX];
+static uint32_t ps_state[3];                     /* state saved with the patch: octave + 8, selected module, preset index */
+static uint32_t ps_loaded[3];                    /* the state of the patch ps_load found */
 
 /* the sector's patch into ps_buf if it is valid */
 static int ps_check(uint32_t base, ps_hdr_t *h)
@@ -44,10 +46,14 @@ static int ps_load(uint8_t *dst, uint32_t *len, uint32_t *seq, uint32_t *sector)
         *len = b.len;
         *seq = b.seq;
         *sector = PS_B;
+        for (i = 0; i < 3u; i++)
+            ps_loaded[i] = b.rsv[i];
     } else {
         *len = a.len;
         *seq = a.seq;
         *sector = PS_A;
+        for (i = 0; i < 3u; i++)
+            ps_loaded[i] = a.rsv[i];
     }
     return 0;
 }
@@ -68,7 +74,10 @@ static int ps_save(const uint8_t *p, uint32_t len)
     h.seq = seq + 1u;
     h.len = len;
     h.crc = m1_crc16(p, len);
-    h.rsv[0] = h.rsv[1] = h.rsv[2] = h.rsv[3] = 0;
+    h.rsv[0] = ps_state[0];
+    h.rsv[1] = ps_state[1];
+    h.rsv[2] = ps_state[2];
+    h.rsv[3] = 0;
     rc = st_erase(target);
     if (!rc)
         rc = st_prog(target + PS_PAYLOAD, p, len);

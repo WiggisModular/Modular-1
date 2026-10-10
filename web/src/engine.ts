@@ -3,7 +3,7 @@
 // an AudioWorklet, in tests, and (as the reference) next to the firmware port.
 
 import { IMPLS, type Ctx, type ModuleImpl, type Voice } from './modules';
-import { defaultMap, processingOrder, SOURCES, type Cable, type Patch, type Source } from './patch';
+import { defaultMap, modulate, processingOrder, SOURCES, type Cable, type Patch, type Source } from './patch';
 
 export const BLOCK = 128;
 
@@ -80,6 +80,22 @@ export class Engine {
     if (n) n.params[name] = value;
   }
 
+  /**
+   * A module whose output went NaN or infinite (a filter blown up by resonance and a hot input, a feedback loop) would keep
+   * poisoning everything after it, because its state never recovers: silence its outputs and restart its state.
+   */
+  private guard(node: Node, n: number): void {
+    for (const name in node.out) {
+      const o = node.out[name];
+      for (let i = 0; i < n; i++) {
+        if (Number.isFinite(o[i]) && o[i] < 1e6 && o[i] > -1e6) continue;
+        node.state = node.impl.init(this.sampleRate);
+        for (const k in node.out) node.out[k].fill(0, 0, n);
+        return;
+      }
+    }
+  }
+
   setAtt(id: number, index: number, value: number): void {
     const n = this.nodes.get(id);
     if (n && (index === 0 || index === 1)) n.att[index] = value;
@@ -96,15 +112,16 @@ export class Engine {
         pins[s] = (sum / n) * node.att[s];
       });
     for (const pd of node.impl.def.params) {
-      let v = node.params[pd.name] ?? pd.default;
+      const base = node.params[pd.name] ?? pd.default;
+      let mod = 0;
       let touched = false;
       (['p1', 'p2'] as const).forEach((name, s) => {
         if (pins[s] !== null && node.map[name].includes(pd.name)) {
-          v += pins[s]! * (pd.max - pd.min);
+          mod += pins[s]!;
           touched = true;
         }
       });
-      node.eff[pd.name] = touched ? Math.min(pd.max, Math.max(pd.min, v)) : v;
+      node.eff[pd.name] = touched ? modulate(pd, base, mod) : base;
     }
   }
 
@@ -153,6 +170,7 @@ export class Engine {
         this.applyCv(node, n);
         const ctx: Ctx = { sr: this.sampleRate, n, inp: node.inp, out: node.out, connected: node.connected, p: node.eff, voice: this.voice };
         node.impl.process(ctx, node.state);
+        this.guard(node, n);
       }
       for (const o of this.outputs) {
         const lvl = o.eff.level ?? 1;
@@ -165,8 +183,8 @@ export class Engine {
       }
     }
     for (let i = 0; i < total; i++) {
-      left[i] = Math.max(-1, Math.min(1, left[i]));
-      right[i] = Math.max(-1, Math.min(1, right[i]));
+      left[i] = Number.isFinite(left[i]) ? Math.max(-1, Math.min(1, left[i])) : 0;
+      right[i] = Number.isFinite(right[i]) ? Math.max(-1, Math.min(1, right[i])) : 0;
     }
   }
 }

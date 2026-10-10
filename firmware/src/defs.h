@@ -3,7 +3,7 @@
 #pragma once
 #include <stdint.h>
 
-#define N_TYPES 12
+#define N_TYPES 13
 enum {
     T_FM1,
     T_OSC,
@@ -16,6 +16,7 @@ enum {
     T_FILTER,
     T_MIXER,
     T_DELAY,
+    T_REVERB,
     T_OUTPUT,
 };
 
@@ -169,6 +170,19 @@ enum {
 #define DELAY_NPAR 3
 #define DELAY_CVBASE 1
 
+/* reverb: Reverb */
+#define REVERB_I_IN 0
+#define REVERB_I_P1 1
+#define REVERB_I_P2 2
+#define REVERB_O_OUT 0
+#define REVERB_P_SIZE 0
+#define REVERB_P_DAMP 1
+#define REVERB_P_MIX 2
+#define REVERB_NIN 3
+#define REVERB_NOUT 1
+#define REVERB_NPAR 3
+#define REVERB_CVBASE 1
+
 /* output: Output */
 #define OUTPUT_I_L 0
 #define OUTPUT_I_R 1
@@ -188,80 +202,144 @@ typedef struct {
     const int32_t *pmin, *pmax, *pdef, *pinc;   /* Q16.16; pinc: what one knob click adds */
     const char *name;       /* upper case, for the LCD */
     const char *const *pname;
+    const char *const *inname;              /* input names, upper case */
+    const uint8_t *plog;                    /* 1: a logarithmic parameter (the filter cutoff) */
+    const char *const *punit;               /* "HZ", "ST", ... or "" */
+    const char *const *const *pchoice;      /* per parameter: the names of a choice parameter (0-terminated), or 0 */
 } def_t;
 
+static const char *const FM1_INNAMES[] = {0};
 static const int32_t FM1_MIN[] = {0, 0, 0, 0};
 static const int32_t FM1_MAX[] = {65536, 65536, 65536, 65536};
 static const int32_t FM1_DEF[] = {32768, 32768, 32768, 32768};
 static const int32_t FM1_INC[] = {655, 655, 655, 655};
 static const char *const FM1_PN[] = {"K1", "K2", "K3", "K4"};
+static const uint8_t FM1_LOG[] = {0, 0, 0, 0};
+static const char *const FM1_UNIT[] = {"", "", "", ""};
+static const char *const *const FM1_CH[] = {0, 0, 0, 0};
+static const char *const OSC_INNAMES[] = {"PITCH", "PM", "P1", "P2"};
 static const int32_t OSC_MIN[] = {0, 3277, -3145728, -6553600, 0, 0};
 static const int32_t OSC_MAX[] = {196608, 62259, 3145728, 6553600, 524288, 65536};
 static const int32_t OSC_DEF[] = {0, 32768, 0, 0, 0, 52429};
 static const int32_t OSC_INC[] = {65536, 655, 65536, 131072, 5243, 655};
 static const char *const OSC_PN[] = {"WAVE", "PW", "COARSE", "FINE", "PM", "LEVEL"};
+static const uint8_t OSC_LOG[] = {0, 0, 0, 0, 0, 0};
+static const char *const OSC_UNIT[] = {"", "", "ST", "CT", "", ""};
+static const char *const OSC_CH0[] = {"SINE", "TRIANGLE", "SAW", "SQUARE", 0};
+static const char *const *const OSC_CH[] = {OSC_CH0, 0, 0, 0, 0, 0};
+static const char *const LFO_INNAMES[] = {"P1", "P2"};
 static const int32_t LFO_MIN[] = {0, 1311, 0};
 static const int32_t LFO_MAX[] = {262144, 2621440, 65536};
 static const int32_t LFO_DEF[] = {0, 262144, 65536};
 static const int32_t LFO_INC[] = {65536, 26201, 655};
 static const char *const LFO_PN[] = {"WAVE", "RATE", "DEPTH"};
+static const uint8_t LFO_LOG[] = {0, 0, 0};
+static const char *const LFO_UNIT[] = {"", "HZ", ""};
+static const char *const LFO_CH0[] = {"SINE", "TRIANGLE", "SAW", "SQUARE", "S&H", 0};
+static const char *const *const LFO_CH[] = {LFO_CH0, 0, 0};
+static const char *const NOISE_INNAMES[] = {"P1", "P2"};
 static const int32_t NOISE_MIN[] = {0};
 static const int32_t NOISE_MAX[] = {65536};
 static const int32_t NOISE_DEF[] = {32768};
 static const int32_t NOISE_INC[] = {655};
 static const char *const NOISE_PN[] = {"LEVEL"};
+static const uint8_t NOISE_LOG[] = {0};
+static const char *const NOISE_UNIT[] = {""};
+static const char *const *const NOISE_CH[] = {0};
+static const char *const CONST_INNAMES[] = {"P1", "P2"};
 static const int32_t CONST_MIN[] = {-262144};
 static const int32_t CONST_MAX[] = {262144};
 static const int32_t CONST_DEF[] = {0};
 static const int32_t CONST_INC[] = {5243};
 static const char *const CONST_PN[] = {"VALUE"};
+static const uint8_t CONST_LOG[] = {0};
+static const char *const CONST_UNIT[] = {""};
+static const char *const *const CONST_CH[] = {0};
+static const char *const SCALE_INNAMES[] = {"IN", "P1", "P2"};
 static const int32_t SCALE_MIN[] = {-262144, -262144};
 static const int32_t SCALE_MAX[] = {262144, 262144};
 static const int32_t SCALE_DEF[] = {65536, 0};
 static const int32_t SCALE_INC[] = {5243, 5243};
 static const char *const SCALE_PN[] = {"GAIN", "OFFSET"};
+static const uint8_t SCALE_LOG[] = {0, 0};
+static const char *const SCALE_UNIT[] = {"", ""};
+static const char *const *const SCALE_CH[] = {0, 0};
+static const char *const ADSR_INNAMES[] = {"GATE", "P1", "P2"};
 static const int32_t ADSR_MIN[] = {66, 66, 0, 66};
 static const int32_t ADSR_MAX[] = {327680, 327680, 65536, 524288};
 static const int32_t ADSR_DEF[] = {655, 13107, 39322, 19661};
 static const int32_t ADSR_INC[] = {3276, 3276, 655, 5242};
 static const char *const ADSR_PN[] = {"A", "D", "S", "R"};
+static const uint8_t ADSR_LOG[] = {0, 0, 0, 0};
+static const char *const ADSR_UNIT[] = {"S", "S", "", "S"};
+static const char *const *const ADSR_CH[] = {0, 0, 0, 0};
+static const char *const VCA_INNAMES[] = {"IN", "CV", "P1", "P2"};
 static const int32_t VCA_MIN[] = {0};
 static const int32_t VCA_MAX[] = {131072};
 static const int32_t VCA_DEF[] = {65536};
 static const int32_t VCA_INC[] = {1311};
 static const char *const VCA_PN[] = {"GAIN"};
+static const uint8_t VCA_LOG[] = {0};
+static const char *const VCA_UNIT[] = {""};
+static const char *const *const VCA_CH[] = {0};
+static const char *const FILTER_INNAMES[] = {"IN", "CV", "P1", "P2"};
 static const int32_t FILTER_MIN[] = {1310720, 0, 0};
 static const int32_t FILTER_MAX[] = {1179648000, 65536, 262144};
 static const int32_t FILTER_DEF[] = {78643200, 13107, 65536};
 static const int32_t FILTER_INC[] = {11783373, 655, 2621};
 static const char *const FILTER_PN[] = {"CUTOFF", "RES", "CVAMT"};
+static const uint8_t FILTER_LOG[] = {1, 0, 0};
+static const char *const FILTER_UNIT[] = {"HZ", "", "OCT"};
+static const char *const *const FILTER_CH[] = {0, 0, 0};
+static const char *const MIXER_INNAMES[] = {"IN1", "IN2", "IN3", "IN4", "P1", "P2"};
 static const int32_t MIXER_MIN[] = {0, 0, 0, 0};
 static const int32_t MIXER_MAX[] = {65536, 65536, 65536, 65536};
 static const int32_t MIXER_DEF[] = {45875, 45875, 45875, 45875};
 static const int32_t MIXER_INC[] = {655, 655, 655, 655};
 static const char *const MIXER_PN[] = {"L1", "L2", "L3", "L4"};
+static const uint8_t MIXER_LOG[] = {0, 0, 0, 0};
+static const char *const MIXER_UNIT[] = {"", "", "", ""};
+static const char *const *const MIXER_CH[] = {0, 0, 0, 0};
+static const char *const DELAY_INNAMES[] = {"IN", "P1", "P2"};
 static const int32_t DELAY_MIN[] = {65536, 0, 0};
 static const int32_t DELAY_MAX[] = {65536000, 62259, 65536};
 static const int32_t DELAY_DEF[] = {16384000, 26214, 19661};
 static const int32_t DELAY_INC[] = {654705, 655, 655};
 static const char *const DELAY_PN[] = {"TIME", "FB", "MIX"};
+static const uint8_t DELAY_LOG[] = {0, 0, 0};
+static const char *const DELAY_UNIT[] = {"MS", "", ""};
+static const char *const *const DELAY_CH[] = {0, 0, 0};
+static const char *const REVERB_INNAMES[] = {"IN", "P1", "P2"};
+static const int32_t REVERB_MIN[] = {0, 0, 0};
+static const int32_t REVERB_MAX[] = {65536, 65536, 65536};
+static const int32_t REVERB_DEF[] = {32768, 26214, 19661};
+static const int32_t REVERB_INC[] = {655, 655, 655};
+static const char *const REVERB_PN[] = {"SIZE", "DAMP", "MIX"};
+static const uint8_t REVERB_LOG[] = {0, 0, 0};
+static const char *const REVERB_UNIT[] = {"", "", ""};
+static const char *const *const REVERB_CH[] = {0, 0, 0};
+static const char *const OUTPUT_INNAMES[] = {"L", "R"};
 static const int32_t OUTPUT_MIN[] = {0};
 static const int32_t OUTPUT_MAX[] = {65536};
 static const int32_t OUTPUT_DEF[] = {45875};
 static const int32_t OUTPUT_INC[] = {655};
 static const char *const OUTPUT_PN[] = {"LEVEL"};
+static const uint8_t OUTPUT_LOG[] = {0};
+static const char *const OUTPUT_UNIT[] = {""};
+static const char *const *const OUTPUT_CH[] = {0};
 
 static const def_t DEFS[N_TYPES] = {
-    {FM1_NIN, FM1_NOUT, FM1_NPAR, FM1_CVBASE, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "FM-1 PANEL", FM1_PN},   /* fm1 */
-    {OSC_NIN, OSC_NOUT, OSC_NPAR, OSC_CVBASE, OSC_MIN, OSC_MAX, OSC_DEF, OSC_INC, "OSCILLATOR", OSC_PN},   /* osc */
-    {LFO_NIN, LFO_NOUT, LFO_NPAR, LFO_CVBASE, LFO_MIN, LFO_MAX, LFO_DEF, LFO_INC, "LFO", LFO_PN},   /* lfo */
-    {NOISE_NIN, NOISE_NOUT, NOISE_NPAR, NOISE_CVBASE, NOISE_MIN, NOISE_MAX, NOISE_DEF, NOISE_INC, "NOISE", NOISE_PN},   /* noise */
-    {CONST_NIN, CONST_NOUT, CONST_NPAR, CONST_CVBASE, CONST_MIN, CONST_MAX, CONST_DEF, CONST_INC, "CONSTANT", CONST_PN},   /* const */
-    {SCALE_NIN, SCALE_NOUT, SCALE_NPAR, SCALE_CVBASE, SCALE_MIN, SCALE_MAX, SCALE_DEF, SCALE_INC, "SCALE", SCALE_PN},   /* scale */
-    {ADSR_NIN, ADSR_NOUT, ADSR_NPAR, ADSR_CVBASE, ADSR_MIN, ADSR_MAX, ADSR_DEF, ADSR_INC, "ADSR", ADSR_PN},   /* adsr */
-    {VCA_NIN, VCA_NOUT, VCA_NPAR, VCA_CVBASE, VCA_MIN, VCA_MAX, VCA_DEF, VCA_INC, "VCA", VCA_PN},   /* vca */
-    {FILTER_NIN, FILTER_NOUT, FILTER_NPAR, FILTER_CVBASE, FILTER_MIN, FILTER_MAX, FILTER_DEF, FILTER_INC, "SVF FILTER", FILTER_PN},   /* filter */
-    {MIXER_NIN, MIXER_NOUT, MIXER_NPAR, MIXER_CVBASE, MIXER_MIN, MIXER_MAX, MIXER_DEF, MIXER_INC, "MIXER 4", MIXER_PN},   /* mixer */
-    {DELAY_NIN, DELAY_NOUT, DELAY_NPAR, DELAY_CVBASE, DELAY_MIN, DELAY_MAX, DELAY_DEF, DELAY_INC, "DELAY", DELAY_PN},   /* delay */
-    {OUTPUT_NIN, OUTPUT_NOUT, OUTPUT_NPAR, OUTPUT_CVBASE, OUTPUT_MIN, OUTPUT_MAX, OUTPUT_DEF, OUTPUT_INC, "OUTPUT", OUTPUT_PN},   /* output */
+    {FM1_NIN, FM1_NOUT, FM1_NPAR, FM1_CVBASE, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "FM-1 PANEL", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH},   /* fm1 */
+    {OSC_NIN, OSC_NOUT, OSC_NPAR, OSC_CVBASE, OSC_MIN, OSC_MAX, OSC_DEF, OSC_INC, "OSCILLATOR", OSC_PN, OSC_INNAMES, OSC_LOG, OSC_UNIT, OSC_CH},   /* osc */
+    {LFO_NIN, LFO_NOUT, LFO_NPAR, LFO_CVBASE, LFO_MIN, LFO_MAX, LFO_DEF, LFO_INC, "LFO", LFO_PN, LFO_INNAMES, LFO_LOG, LFO_UNIT, LFO_CH},   /* lfo */
+    {NOISE_NIN, NOISE_NOUT, NOISE_NPAR, NOISE_CVBASE, NOISE_MIN, NOISE_MAX, NOISE_DEF, NOISE_INC, "NOISE", NOISE_PN, NOISE_INNAMES, NOISE_LOG, NOISE_UNIT, NOISE_CH},   /* noise */
+    {CONST_NIN, CONST_NOUT, CONST_NPAR, CONST_CVBASE, CONST_MIN, CONST_MAX, CONST_DEF, CONST_INC, "CONSTANT", CONST_PN, CONST_INNAMES, CONST_LOG, CONST_UNIT, CONST_CH},   /* const */
+    {SCALE_NIN, SCALE_NOUT, SCALE_NPAR, SCALE_CVBASE, SCALE_MIN, SCALE_MAX, SCALE_DEF, SCALE_INC, "SCALE", SCALE_PN, SCALE_INNAMES, SCALE_LOG, SCALE_UNIT, SCALE_CH},   /* scale */
+    {ADSR_NIN, ADSR_NOUT, ADSR_NPAR, ADSR_CVBASE, ADSR_MIN, ADSR_MAX, ADSR_DEF, ADSR_INC, "ADSR", ADSR_PN, ADSR_INNAMES, ADSR_LOG, ADSR_UNIT, ADSR_CH},   /* adsr */
+    {VCA_NIN, VCA_NOUT, VCA_NPAR, VCA_CVBASE, VCA_MIN, VCA_MAX, VCA_DEF, VCA_INC, "VCA", VCA_PN, VCA_INNAMES, VCA_LOG, VCA_UNIT, VCA_CH},   /* vca */
+    {FILTER_NIN, FILTER_NOUT, FILTER_NPAR, FILTER_CVBASE, FILTER_MIN, FILTER_MAX, FILTER_DEF, FILTER_INC, "SVF FILTER", FILTER_PN, FILTER_INNAMES, FILTER_LOG, FILTER_UNIT, FILTER_CH},   /* filter */
+    {MIXER_NIN, MIXER_NOUT, MIXER_NPAR, MIXER_CVBASE, MIXER_MIN, MIXER_MAX, MIXER_DEF, MIXER_INC, "MIXER 4", MIXER_PN, MIXER_INNAMES, MIXER_LOG, MIXER_UNIT, MIXER_CH},   /* mixer */
+    {DELAY_NIN, DELAY_NOUT, DELAY_NPAR, DELAY_CVBASE, DELAY_MIN, DELAY_MAX, DELAY_DEF, DELAY_INC, "DELAY", DELAY_PN, DELAY_INNAMES, DELAY_LOG, DELAY_UNIT, DELAY_CH},   /* delay */
+    {REVERB_NIN, REVERB_NOUT, REVERB_NPAR, REVERB_CVBASE, REVERB_MIN, REVERB_MAX, REVERB_DEF, REVERB_INC, "REVERB", REVERB_PN, REVERB_INNAMES, REVERB_LOG, REVERB_UNIT, REVERB_CH},   /* reverb */
+    {OUTPUT_NIN, OUTPUT_NOUT, OUTPUT_NPAR, OUTPUT_CVBASE, OUTPUT_MIN, OUTPUT_MAX, OUTPUT_DEF, OUTPUT_INC, "OUTPUT", OUTPUT_PN, OUTPUT_INNAMES, OUTPUT_LOG, OUTPUT_UNIT, OUTPUT_CH},   /* output */
 };

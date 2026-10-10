@@ -25,14 +25,14 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**, with a browser app
 ## Firmware build (works, not flashed)
 
 - `nix develop` (flake.nix) sets `JIELI_TOOLCHAIN=~/.jieli/toolchain` and `AC79_SDK=~/.jieli/ac79-sdk`. Toolchain: `tools/get_toolchain.sh`; SDK: sparse clone of `cpu/wl82/tools` at tag `AC79NN_SDK_V1.2.1_2023-12-13` (the 3 files match the expected SHA-256). The prebuilt clang runs on NixOS via nix-ld.
-- `python3 tools/build.py` builds `build/felucca.bin` (15 KB), `build/loader/ota.bin` and `build/felucca.fwsc` (identity `FM-1_800`) with no warnings; all checks pass.
+- `python3 tools/build.py` builds `build/modular-1.bin` (15 KB), `build/loader/ota.bin` and `build/modular-1.fwsc` (identity `FM-1_800`) with no warnings; all checks pass.
 - `firmware/src/` (bring-up): `modular.c` (single unit), `main.c` (reduced Felucca boot: boot-loop guard, OCT-/OCT+ 5 s UBOOT, OTA, UBOOT SysEx), `audio.c` (sine voice on MIDI notes), `font5x7.c`, plus Felucca's `usb.c`, `ota.c`, `ota_hw.c`, `storage_hw.c`, `lcd.c`, `libc.c` (ota_hw.c edited to use `text5x7`). Felucca source: `~/.jieli/felucca` at `a4d7ca2e`.
 - build.py no longer runs `generate()` (the gen_*.py tools are not in this repo) and skips `size_fns.py` unless `FELUCCA_SIZE=1`.
 - The sine/MIDI/LCD code has never run on hardware.
 
 ## Measured on device (flashing works, user-confirmed)
 
-Benchmark (`firmware/src/bench.c`, numbers in docs/ARCHITECTURE.md): no FPU, float 40-70x slower than Q15 (osc 489 us vs 7 us per 128-frame block). **Decision: audio path fixed point only.** `tools/build.py` links `libcompiler-rt.a` from the toolchain; install with `nix develop -c python3 tools/fm1_install.py build/felucca.fwsc` (mido/rtmidi are in the flake; the tool asks for confirmation interactively).
+Benchmark (`firmware/src/bench.c`, numbers in docs/ARCHITECTURE.md): no FPU, float 40-70x slower than Q15 (osc 489 us vs 7 us per 128-frame block). **Decision: audio path fixed point only.** `tools/build.py` links `libcompiler-rt.a` from the toolchain; install with `nix develop -c python3 tools/fm1_install.py build/modular-1.fwsc` (mido/rtmidi are in the flake; the tool asks for confirmation interactively).
 
 ## Engine port (done on the host, not yet measured on device)
 
@@ -61,6 +61,18 @@ Benchmark (`firmware/src/bench.c`, numbers in docs/ARCHITECTURE.md): no FPU, flo
 - Bank in flash: `firmware/src/slotstore.c` (32 sectors at 0xA0000), protocol commands SLOT 0x13 / SLOT_ERASE 0x14 / SLOT_INFO 0x15 (reply 0x42), web page `web/src/bank.ts` (tab "Presets", list stored in localStorage `modular-1.bank`). Device: encoder 6 (PRESET) and program change step through the bank (or the factory list if the bank is empty); boot loads the STOREd patch if any, else entry 0.
 - Hazard I hit: never `git checkout <file>` on a file with uncommitted work (I lost presets.ts once and had to rewrite it).
 
+## M1-0.9 (host-tested; device UI/buttons not yet seen)
+
+- Buttons: OCT- (id 0) / OCT+ (id 1) octave shift of the keys, SAVE (id 9) stores the state (patch + octave + selected module + preset) via `m1_store`; other buttons show `BTN n` in the header (ids from Felucca's panel table: only PLAY/REC were measured, SAVE may differ: check on the device).
+- LCD rewritten in `firmware/src/ui.c`; preview without a device: `nix develop -c tools/ui_preview.sh out.png PRESET [MODULE [OCTAVE]]`. Font now has + % & > = ( ) ? ! # * < , _ '.
+- Choice names / units / input names / log flags are generated into `defs.h` (`export-defs.ts`).
+- New module `reverb`; patch binary format 4; filter cutoff is logarithmic (`ParamDef.log`); `KNOBS` table in `presets.ts` routes K1..K4 in all 32 presets (rules in docs/ARCHITECTURE.md).
+- Pool use is 318 KB of 368 KB (signal buffers, 2 delays, 2 reverbs, the LCD picture buffer).
+
+## Flash tab (simplified)
+
+- One click installs the firmware bundled with the app: `tools/build.py` then `cd web && npm run firmware` copies `build/modular-1.fwsc` to `web/public/firmware/modular-1.fwsc` + `modular-1.json` (version, product, sha256; git-ignored). If the FM-1 is sitting in its update loader from an interrupted install, the same button finishes that write. "Return to stock" needs the official `FM-1.fwsc`; "Install another package" takes any `.fwsc` that carries the loader. The "combine the official V15 with an app.bin" step is gone (`buildFeluccaPackage` is no longer used by the UI).
+
 ## Not verified — do not claim otherwise
 
 - The flash tab and installer have never run against a real FM-1 in this project.
@@ -81,6 +93,8 @@ SysEx over USB MIDI. The device *pulls* blocks: it sends read requests (cmd 0x30
 5. Patch transfer over SysEx, panel mapping. See `docs/ARCHITECTURE.md`.
 
 ## Gotchas
+
+- **Chromium aborts the whole browser (SIGILL) in `midi::MidiManager::SetInputPortState`** (its ALSA Web MIDI backend, Chromium 151 on this NixOS box; `coredumpctl list` shows a series) when MIDI ports change while any page holds MIDI access, e.g. the FM-1 re-enumerating after a reset or during a firmware update, or other programs (`fm1_install.py`, `m1_link.py`: rtmidi/ALSA clients) coming and going. The web app therefore requests MIDI only on a click (Enable MIDI keyboard, Connect FM-1, the flasher) and has Release MIDI (reload). Prefer `tools/fm1_install.py` for flashing; close the app's tab before running CLI tools. Headless Chromium runs I started also dump core when killed.
 
 - Never flash untested firmware that lacks Felucca's OTA handling; that removes the way back (apart from the loader/stock path).
 - `pkill -f "<pattern>"` inside a Bash tool call matches the shell itself; use `pgrep`+PID or a pidfile.

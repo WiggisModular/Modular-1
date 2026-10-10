@@ -3,6 +3,8 @@
 import { DEFS } from './modules';
 import {
   addModule,
+  fromUnit,
+  toUnit,
   SOURCES,
   type Source,
   connect,
@@ -128,13 +130,21 @@ export class Editor {
       val.textContent = fmt(m.params[pd.name]);
       const input = document.createElement('input');
       input.type = 'range';
-      input.min = String(pd.min);
-      input.max = String(pd.max);
-      input.step = String(pd.step ?? (pd.max - pd.min) / 200);
-      input.value = String(m.params[pd.name]);
+      if (pd.log) {
+        // a logarithmic parameter: the slider position is the fraction of the octaves
+        input.min = '0';
+        input.max = '1000';
+        input.step = '1';
+        input.value = String(Math.round(toUnit(pd, m.params[pd.name]) * 1000));
+      } else {
+        input.min = String(pd.min);
+        input.max = String(pd.max);
+        input.step = String(pd.step ?? (pd.max - pd.min) / 200);
+        input.value = String(m.params[pd.name]);
+      }
       input.setAttribute('aria-label', `${def.label} ${pd.name}`);
       input.oninput = () => {
-        const v = Number(input.value);
+        const v = pd.log ? Math.round(fromUnit(pd, Number(input.value) / 1000)) : Number(input.value);
         m.params[pd.name] = v;
         val.textContent = fmt(v);
         this.ev.onParam(m.id, pd.name, v);

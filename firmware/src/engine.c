@@ -16,6 +16,8 @@
 #define ENG_MAX_CABLES 192
 #define ENG_NBUF 160u               /* signal buffers of ENG_BLOCK samples (a connected output, a summed input) */
 #define ENG_NDELAY 2                /* delay modules per patch */
+#define ENG_NREV 2                  /* reverb modules per patch */
+#define RV_LEN 5934u                /* the four combs (1116 1188 1277 1356) and two allpasses (556 441), int16 Q13 */
 #define DELAY_LEN 46305u            /* ceil(ENG_SR * 1.05) samples, as the reference */
 #define MAX_SUM (ENG_MAX_MODULES * 4)
 #define MAX_HELD 16
@@ -105,6 +107,57 @@ static int32_t wave(int32_t kind, uint32_t ph, uint32_t dt, uint32_t pw)
     }
 }
 
+
+/* log2 of a Q16 value (or of any positive integer: the offset cancels in ratios), Q16 */
+static int32_t log2_q16(uint32_t x)
+{
+    uint32_t n, m, i, r;
+    if (!x)
+        return -(32 << 16);
+    n = 31u - (uint32_t)__builtin_clz(x);
+    m = (x << (31u - n)) & 0x7FFFFFFFu;                  /* the mantissa's fraction, 31 bits */
+    i = m >> 23;
+    r = (m >> 7) & 0xFFFFu;
+    return (int32_t)(n << 16) + (int32_t)(LOG2_T[i] + (uint32_t)(((uint64_t)(LOG2_T[i + 1u] - LOG2_T[i]) * r) >> 16));
+}
+
+/* 2^(e / 65536) as an integer (a Q16 value), saturating */
+static uint32_t exp2_q16(int32_t e)
+{
+    int32_t n = e >> 16;
+    uint32_t fr = (uint32_t)e & 0xFFFFu, i = fr >> 8, r = fr & 255u;
+    uint64_t m = EXP2_T[i] + (uint32_t)(((uint64_t)(EXP2_T[i + 1u] - EXP2_T[i]) * r) >> 8);   /* Q28 */
+    if (n < 0)
+        return 0;
+    if (n > 31)
+        return 0x7FFFFFFFu;
+    m = (m << n) >> 28;
+    return m > 0x7FFFFFFFu ? 0x7FFFFFFFu : (uint32_t)m;
+}
+
+/* a parameter's position in its range as Q16 0..1: linear, or logarithmic for the cutoff */
+static int32_t unit_of(const def_t *d, uint32_t j, int32_t v)
+{
+    int32_t lo = d->pmin[j], hi = d->pmax[j];
+    v = clampi(v, lo, hi);
+    if (d->plog && d->plog[j]) {
+        int32_t l0 = log2_q16((uint32_t)lo);
+        return (int32_t)(((int64_t)(log2_q16((uint32_t)v) - l0) << 16) / (log2_q16((uint32_t)hi) - l0));
+    }
+    return (int32_t)(((int64_t)(v - lo) << 16) / (hi - lo));
+}
+
+static int32_t value_of(const def_t *d, uint32_t j, int32_t u)
+{
+    int32_t lo = d->pmin[j], hi = d->pmax[j];
+    u = clampi(u, 0, ENG_ONE);
+    if (d->plog && d->plog[j]) {
+        int32_t l0 = log2_q16((uint32_t)lo);
+        return clampi((int32_t)exp2_q16(l0 + (int32_t)(((int64_t)u * (log2_q16((uint32_t)hi) - l0)) >> 16)), lo, hi);
+    }
+    return lo + (int32_t)(((int64_t)u * (hi - lo)) >> 16);
+}
+
 /* ------------------------------------------------------------------ engine state */
 
 typedef struct {
@@ -121,6 +174,7 @@ typedef struct {
         struct { int32_t v; uint8_t stage, prev; } adsr;
         struct { int32_t ic1, ic2; } flt;
         struct { int16_t *buf; uint32_t w; } dly;
+        struct { int16_t *buf; uint16_t ci[4], ai[2]; int32_t lp[4]; } rev;
     } s;
 } node_t;
 
@@ -133,7 +187,7 @@ static struct {
     uint8_t loaded, nmod, nsum, nsrc, norder, nout;
     uint8_t order[ENG_MAX_MODULES], outputs[ENG_MAX_MODULES];
     uint8_t from_m[ENG_MAX_CABLES], from_p[ENG_MAX_CABLES], to_m[ENG_MAX_CABLES], to_p[ENG_MAX_CABLES];
-    uint16_t ncab, nbuf, ndly;
+    uint16_t ncab, nbuf, ndly, nrev;
     node_t node[ENG_MAX_MODULES];
     sum_t sum[MAX_SUM];
     const sig_t *sum_src[ENG_MAX_CABLES];
@@ -144,6 +198,7 @@ static struct {
 
 static sig_t buf_pool[ENG_NBUF][ENG_BLOCK] ENG_POOL;
 static int16_t dly_pool[ENG_NDELAY][DELAY_LEN] ENG_POOL;
+static int16_t rev_pool[ENG_NREV][RV_LEN] ENG_POOL;
 static const sig_t zero_buf[ENG_BLOCK];
 static sig_t dummy_out[ENG_BLOCK];
 
@@ -213,6 +268,7 @@ int eng_load(const uint8_t *p, uint32_t len)
     E.ncab = (uint16_t)ncab;
     E.nbuf = 0;
     E.ndly = 0;
+    E.nrev = 0;
     for (i = 0; i < E.nmod; i++) {
         node_t *nd = &E.node[i];
         const def_t *d;
@@ -235,6 +291,13 @@ int eng_load(const uint8_t *p, uint32_t len)
                 nd->map[j] = p[at++];
         }
         init_state(nd);
+        if (nd->type == T_REVERB) {
+            if (E.nrev >= ENG_NREV)
+                return -4;
+            nd->s.rev.buf = rev_pool[E.nrev++];
+            for (j = 0; j < RV_LEN; j++)
+                nd->s.rev.buf[j] = 0;
+        }
         if (nd->type == T_DELAY) {
             if (E.ndly >= ENG_NDELAY)
                 return -4;
@@ -333,6 +396,17 @@ uint32_t eng_knob_mask(uint32_t module, uint32_t knob)
     return knob < d->npar ? 1u << knob : 0u;
 }
 
+int eng_ncables(void) { return E.loaded ? E.ncab : 0; }
+void eng_cable(uint32_t i, uint32_t *from, uint32_t *from_port, uint32_t *to, uint32_t *to_port)
+{
+    if (i >= E.ncab)
+        return;
+    *from = E.from_m[i];
+    *from_port = E.from_p[i];
+    *to = E.to_m[i];
+    *to_port = E.to_p[i];
+}
+
 int eng_nmodules(void) { return E.loaded ? E.nmod : 0; }
 int eng_type(uint32_t module) { return module < E.nmod ? E.node[module].type : -1; }
 uint32_t eng_map(uint32_t module, uint32_t source)
@@ -348,6 +422,27 @@ void eng_set_param(uint32_t module, uint32_t param, int32_t q16)
 {
     if (module < E.nmod && param < DEFS[E.node[module].type].npar)
         E.node[module].par[param] = q16;
+}
+
+/* for the knobs: a parameter moved by `clicks` steps of 1/100 of its range (octaves for the cutoff) */
+int32_t eng_step_param(uint32_t module, uint32_t j, int32_t clicks, int32_t unit_per_click)
+{
+    const def_t *d;
+    if (module >= E.nmod || j >= DEFS[E.node[module].type].npar)
+        return 0;
+    d = &DEFS[E.node[module].type];
+    return value_of(d, j, unit_of(d, j, E.node[module].par[j]) + clicks * unit_per_click);
+}
+
+int eng_param_is_log(uint32_t module, uint32_t j)
+{
+    return module < E.nmod && j < DEFS[E.node[module].type].npar && DEFS[E.node[module].type].plog && DEFS[E.node[module].type].plog[j];
+}
+
+/* the value the module used in the last block: the base plus what the parameter inputs added */
+int32_t eng_get_eff(uint32_t module, uint32_t param)
+{
+    return module < E.nmod && param < DEFS[E.node[module].type].npar ? E.node[module].eff[param] : 0;
 }
 
 int32_t eng_get_param(uint32_t module, uint32_t param)
@@ -673,6 +768,52 @@ static void m_delay(node_t *nd, uint32_t n)
     nd->s.dly.w = w;
 }
 
+/* ---- reverb: the same Freeverb-style network as modules.ts, in Q16 with int16 (Q13) delay memory */
+
+static const uint16_t RV_COMB[4] = {1116, 1188, 1277, 1356};
+static const uint16_t RV_AP[2] = {556, 441};
+
+static void m_reverb(node_t *nd, uint32_t n)
+{
+    const sig_t *in = nd->in[REVERB_I_IN];
+    sig_t *out = nd->out[0];
+    int16_t *base = nd->s.rev.buf, *comb[4], *ap[2];
+    int32_t fb = 45875 + mul16(EF(nd, REVERB_P_SIZE), 18350);          /* 0.70 + 0.28 size */
+    int32_t d1 = mul16(EF(nd, REVERB_P_DAMP), 26214), mix = EF(nd, REVERB_P_MIX), dry = ENG_ONE - mix;
+    uint32_t i, k, off = 0;
+    for (k = 0; k < 4u; k++) {
+        comb[k] = base + off;
+        off += RV_COMB[k];
+    }
+    for (k = 0; k < 2u; k++) {
+        ap[k] = base + off;
+        off += RV_AP[k];
+    }
+    for (i = 0; i < n; i++) {
+        int32_t x = in[i], g = x >> 4, sum = 0;                        /* the input at 1/16 */
+        for (k = 0; k < 4u; k++) {
+            uint32_t ix = nd->s.rev.ci[k];
+            int32_t o = (int32_t)comb[k][ix] * 8;
+            nd->s.rev.lp[k] = mulr(o, ENG_ONE - d1, 16) + mulr(nd->s.rev.lp[k], d1, 16);
+            comb[k][ix] = dly_pack(g + mulr(nd->s.rev.lp[k], fb, 16));
+            if (++ix == RV_COMB[k])
+                ix = 0;
+            nd->s.rev.ci[k] = (uint16_t)ix;
+            sum += o;
+        }
+        for (k = 0; k < 2u; k++) {
+            uint32_t ix = nd->s.rev.ai[k];
+            int32_t bo = (int32_t)ap[k][ix] * 8, y = bo - sum;
+            ap[k][ix] = dly_pack(sum + (bo >> 1));
+            if (++ix == RV_AP[k])
+                ix = 0;
+            nd->s.rev.ai[k] = (uint16_t)ix;
+            sum = y;
+        }
+        out[i] = mulr(x, dry, 16) + mulr(sum, mix, 16);
+    }
+}
+
 /* ------------------------------------------------------------------ rendering */
 
 /* Block-rate parameter modulation (engine.ts applyCv): the mean of p1 / p2 over the block, times the attenuverter, is
@@ -697,12 +838,18 @@ static void apply_cv(node_t *nd, uint32_t n)
     for (j = 0; j < d->npar; j++) {
         int32_t v = nd->par[j];
         uint32_t touched = 0;
+        int32_t mod = 0;
         for (s = 0; s < 2u; s++)
             if ((have >> s & 1u) && (nd->map[s] >> j & 1u)) {
-                v += mul16(mean[s], d->pmax[j] - d->pmin[j]);
+                mod += mean[s];
                 touched = 1;
             }
-        nd->eff[j] = touched ? clampi(v, d->pmin[j], d->pmax[j]) : v;
+        if (!touched)
+            nd->eff[j] = v;
+        else if (d->plog && d->plog[j])
+            nd->eff[j] = value_of(d, j, unit_of(d, j, v) + mod);            /* in octaves */
+        else
+            nd->eff[j] = clampi(v + mul16(mod, d->pmax[j] - d->pmin[j]), d->pmin[j], d->pmax[j]);
     }
 }
 
@@ -720,6 +867,7 @@ static void process(node_t *nd, uint32_t n)
     case T_FILTER: m_filter(nd, n); break;
     case T_MIXER: m_mixer(nd, n); break;
     case T_DELAY: m_delay(nd, n); break;
+    case T_REVERB: m_reverb(nd, n); break;
     default: break;                      /* output: read by eng_render */
     }
 }

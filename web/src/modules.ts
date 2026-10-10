@@ -275,7 +275,7 @@ const filter: ModuleImpl<{ ic1: number; ic2: number }> = {
     inputs: [audio('in'), control('cv')],
     outputs: [audio('lp'), audio('bp'), audio('hp')],
     params: [
-      param('cutoff', 20, 18000, 1200, { unit: 'Hz', step: 1 }),
+      param('cutoff', 20, 18000, 1200, { unit: 'Hz', step: 1, log: true }),
       param('res', 0, 1, 0.2, { step: 0.01 }),
       param('cvamt', 0, 4, 1, { unit: 'oct', step: 0.01 }),
     ],
@@ -340,6 +340,61 @@ const delay: ModuleImpl<{ buf: Float32Array; w: number }> = {
   },
 };
 
+/**
+ * A small Freeverb-style reverb (mono): four lowpass-damped feedback combs in parallel into two series allpasses.
+ * size sets the comb feedback (0.70 .. 0.98), damp the lowpass in the feedback, mix the wet share.
+ */
+const RV_COMB = [1116, 1188, 1277, 1356]; // delay lengths at 44.1 kHz
+const RV_AP = [556, 441];
+interface ReverbState {
+  comb: Float32Array[];
+  ci: number[];
+  lp: number[];
+  ap: Float32Array[];
+  ai: number[];
+}
+
+const reverb: ModuleImpl<ReverbState> = {
+  def: {
+    type: 'reverb',
+    label: 'Reverb',
+    inputs: [audio('in')],
+    outputs: [audio('out')],
+    params: [param('size', 0, 1, 0.5, { step: 0.01 }), param('damp', 0, 1, 0.4, { step: 0.01 }), param('mix', 0, 1, 0.3, { step: 0.01 })],
+  },
+  init: (sr) => {
+    const len = (n: number): number => Math.max(1, Math.round((n * sr) / 44100));
+    return { comb: RV_COMB.map((n) => new Float32Array(len(n))), ci: [0, 0, 0, 0], lp: [0, 0, 0, 0], ap: RV_AP.map((n) => new Float32Array(len(n))), ai: [0, 0] };
+  },
+  process(c, s) {
+    const fb = 0.7 + 0.28 * (c.p.size ?? 0.5);
+    const d1 = (c.p.damp ?? 0.4) * 0.4;
+    const mix = c.p.mix ?? 0.3;
+    for (let i = 0; i < c.n; i++) {
+      const x = c.inp.in[i];
+      const g = x * 0.0625;
+      let sum = 0;
+      for (let k = 0; k < 4; k++) {
+        const buf = s.comb[k];
+        const o = buf[s.ci[k]];
+        s.lp[k] = o * (1 - d1) + s.lp[k] * d1;
+        buf[s.ci[k]] = g + s.lp[k] * fb;
+        if (++s.ci[k] === buf.length) s.ci[k] = 0;
+        sum += o;
+      }
+      for (let k = 0; k < 2; k++) {
+        const buf = s.ap[k];
+        const bo = buf[s.ai[k]];
+        const y = bo - sum;
+        buf[s.ai[k]] = sum + bo * 0.5;
+        if (++s.ai[k] === buf.length) s.ai[k] = 0;
+        sum = y;
+      }
+      c.out.out[i] = x * (1 - mix) + sum * mix;
+    }
+  },
+};
+
 const output: ModuleImpl<null> = {
   def: {
     type: 'output',
@@ -354,7 +409,7 @@ const output: ModuleImpl<null> = {
   },
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, output];
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an

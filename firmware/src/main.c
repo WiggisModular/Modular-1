@@ -7,9 +7,6 @@
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
 extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[];
 
-#define C_BG 0x0000u
-#define C_FG 0xFFFFu
-#define C_ACC 0xFD20u
 
 void fm1_timer5_irq(void)
 {
@@ -58,156 +55,7 @@ static void fm1_fault(const fm1_crash_t *c)
     fm1_reboot();
 }
 
-static uint32_t cur_preset;
-static int load_err;
-static const char *patch_label = "";
-static uint32_t sel;                            /* the module the knobs act on (SELECT turns it) */
-static volatile uint8_t ui_dirty;               /* the module section needs a redraw */
-
-#define C_DIM 0x7BEFu
-
-static char *put(char *d, const char *s)
-{
-    while (*s)
-        *d++ = *s++;
-    return d;
-}
-
-static char *pad(char *d, const char *start, uint32_t width)
-{
-    while (d < start + width)
-        *d++ = ' ';
-    *d = 0;
-    return d;
-}
-
-/* a Q16 parameter value, three significant figures: 1200, 12.5, 0.25 */
-static char *put_val(char *d, int32_t q16)
-{
-    int64_t x = ((int64_t)q16 * 100) / 65536;            /* hundredths */
-    int64_t a = x < 0 ? -x : x;
-    char b[14];
-    if (a >= 10000)
-        fmt_fix(b, (int32_t)(x / 100), 0);
-    else if (a >= 1000)
-        fmt_fix(b, (int32_t)(x / 10), 1);
-    else
-        fmt_fix(b, (int32_t)x, 2);
-    return put(d, b);
-}
-
-static void status_draw(void)                   /* the engine's CPU load, a few times a second */
-{
-    char line[24], num[12], *p = line;
-    p = put(p, "CPU ");
-    fmt_int(num, (int32_t)(eng_us_last * 100u / 2902u));
-    p = put(p, num);
-    p = put(p, "% PK ");
-    fmt_int(num, (int32_t)(eng_us_max * 100u / 2902u));
-    p = put(p, num);
-    p = put(p, "%");
-    pad(p, line, 20);
-    text5x7(12, 30, line, 1, C_DIM, C_BG);
-}
-
-/* the selected module: its name, what the four knobs change, and the two parameter inputs with their attenuverters */
-static void module_draw(void)
-{
-    char line[48], *p;
-    uint32_t n = (uint32_t)eng_nmodules(), k, j;
-    int type = eng_type(sel);
-    const def_t *d;
-    if (!n || type < 0) {
-        text5x7(12, 46, "NO MODULES                 ", 2, C_FG, C_BG);
-        return;
-    }
-    d = &DEFS[type];
-    p = line;
-    fmt_int(p, (int32_t)sel + 1);
-    p += str_len(p);
-    *p++ = '/';
-    fmt_int(p, (int32_t)n);
-    p += str_len(p);
-    *p++ = ' ';
-    p = put(p, d->name);
-    pad(p, line, 20);
-    text5x7(12, 46, line, 2, C_ACC, C_BG);
-    for (k = 0; k < 4u; k++) {
-        uint32_t mask = eng_knob_mask(sel, k), first = 0, cnt = 0;
-        char *start = line;
-        p = line;
-        *p++ = 'K';
-        *p++ = (char)('1' + k);
-        *p++ = ' ';
-        for (j = 0; j < d->npar; j++)
-            if (mask >> j & 1u) {
-                if (!cnt)
-                    first = j;
-                cnt++;
-            }
-        if (!cnt) {
-            p = put(p, "-");
-        } else {
-            char nm[10], *q = nm;
-            q = put(q, d->pname[first]);
-            *q = 0;
-            if (str_len(nm) > 8u)
-                nm[8] = 0;
-            p = put(p, nm);
-            if (cnt > 1u)
-                p[-1] = '+';
-            pad(p, start + 3, 9);
-            p = start + 12;
-            *p++ = ' ';
-            put_val(p, eng_get_param(sel, first));
-            p += str_len(p);
-        }
-        pad(p, start, 20);
-        text5x7(12, 74u + 22u * k, line, 2, cnt ? C_FG : C_DIM, C_BG);
-    }
-    for (k = 0; k < 2u; k++) {
-        uint32_t mask = d->cvbase >= 0 ? eng_map(sel, k) : 0u;
-        char *start = line;
-        p = line;
-        *p++ = 'P';
-        *p++ = (char)('1' + k);
-        *p++ = ' ';
-        if (d->cvbase < 0) {
-            p = put(p, "NO PARAMETER INPUTS");
-        } else {
-            char num[12];
-            int32_t a = (int32_t)(((int64_t)eng_att(sel, k) * 100) / 65536);
-            fmt_fix(num, a, 2);
-            p = put(p, a < 0 ? "" : "+");
-            p = put(p, num);
-            for (j = 0; j < d->npar; j++)
-                if (mask >> j & 1u) {
-                    *p++ = ' ';
-                    p = put(p, d->pname[j]);
-                }
-        }
-        pad(p, start, 40);
-        text5x7(12, 170u + 10u * k, line, 1, d->cvbase >= 0 && mask ? C_FG : C_DIM, C_BG);
-    }
-    text5x7(12, 200, "SELECT: MODULE   K1-K4: PARAMS", 1, C_DIM, C_BG);
-}
-
-static void screen_idle(void)
-{
-    char b[24], *p = b;
-    lcd_fill(0, 0, 240, 240, C_BG);
-    text5x7(12, 2, "MODULAR-1", 2, C_FG, C_BG);
-    text5x7(132, 8, FELUCCA_VERSION, 1, C_ACC, C_BG);
-    if (load_err) {
-        p = put(p, "LOAD ERR ");
-        fmt_int(p, load_err);
-        text5x7(12, 20, b, 1, 0xF800u, C_BG);
-    } else {
-        text5x7(12, 20, patch_label, 1, C_FG, C_BG);
-    }
-    status_draw();
-    module_draw();
-}
+static void leds_octave(void);
 
 /* proto.c hooks */
 static int m1_flash_ok(void) { return flash_ok; }
@@ -227,14 +75,16 @@ static int m1_apply(const uint8_t *patch, uint32_t len)
 }
 static int m1_store(const uint8_t *patch, uint32_t len)
 {
+    int rc;
     if (!flash_ok)
         return -1;
+    ps_state[0] = (uint32_t)(octave + 8);        /* the state saved with the patch: octave, selected module, preset */
+    ps_state[1] = sel;
+    ps_state[2] = cur_preset;
     eng_run = 0;                                /* a sector erase takes the CPU for a while: no audio meanwhile */
-    {
-        int rc = ps_save(patch, len);
-        eng_run = load_err == 0;
-        return rc;
-    }
+    rc = ps_save(patch, len);
+    eng_run = load_err == 0;
+    return rc;
 }
 
 /* The preset list the PRESET knob and MIDI program change step through: the preset bank if the editor uploaded one
@@ -349,7 +199,12 @@ static void patch_boot(void)                    /* the stored patch if there is 
         sl_scan();
     if (flash_ok && ps_load(buf, &len, &seq, &sector) == 0 && m1_apply(buf, len) == 0) {
         m1_set_current(buf, len);
+        octave = ps_loaded[0] ? (int32_t)ps_loaded[0] - 8 : 0;   /* the state that was saved with it (0: a record from before) */
+        octave = octave < -3 ? -3 : octave > 3 ? 3 : octave;
+        sel = ps_loaded[1] < (uint32_t)eng_nmodules() ? ps_loaded[1] : 0u;
+        cur_preset = ps_loaded[2] < list_count() ? ps_loaded[2] : 0u;
         patch_label = "STORED PATCH";
+        leds_octave();
         screen_idle();
         return;
     }
@@ -424,7 +279,7 @@ static void knobs_poll(void)
     if (st[0]) {
         int32_t m = ((int32_t)sel + st[0]) % (int32_t)n;
         sel = (uint32_t)(m < 0 ? m + (int32_t)n : m);
-        ui_dirty = 1;
+        ui_dirty = 2;
     }
     for (k = 0; k < 4u; k++) {
         uint32_t mask;
@@ -434,24 +289,31 @@ static void knobs_poll(void)
         for (j = 0; j < DEFS[eng_type(sel)].npar; j++) {
             const def_t *d = &DEFS[eng_type(sel)];
             int32_t inc, v;
+            uint32_t fast = fm1_ms - last_ms[k] < 80u;
             if (!(mask >> j & 1u))
                 continue;
             inc = d->pinc[j];
-            if (inc < ENG_ONE && fm1_ms - last_ms[k] < 80u)
-                inc *= 5;
-            v = eng_get_param(sel, j) + st[2u + k] * inc;
-            v = v < d->pmin[j] ? d->pmin[j] : v > d->pmax[j] ? d->pmax[j] : v;
+            if (eng_param_is_log(sel, j)) {              /* the cutoff: 1/100 of its octaves per click */
+                v = eng_step_param(sel, j, st[2u + k], fast ? 5 * 655 : 655);
+            } else {
+                if (inc < ENG_ONE && fast)
+                    inc *= 5;
+                v = eng_get_param(sel, j) + st[2u + k] * inc;
+                v = v < d->pmin[j] ? d->pmin[j] : v > d->pmax[j] ? d->pmax[j] : v;
+            }
             eng_set_param(sel, j, v);
             m1_patch_param(sel, j, v);
         }
         if (mask) {
             last_ms[k] = fm1_ms;
-            ui_dirty = 1;
+            if (!ui_dirty)
+                ui_dirty = 1;
         }
     }
 }
 
-static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F3 = MIDI 53) -> the engine */
+static uint8_t key_note[27];                     /* the note each held key started, so a release (or an octave change in between) ends the right one */
+static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F3 = MIDI 53), shifted by the octave, -> the engine */
 {
     static uint32_t prev;
     uint32_t now = fm1_in.notes, diff = now ^ prev, n;
@@ -460,11 +322,60 @@ static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F
         if (!(diff & (1u << n)))
             continue;
         diff &= ~(1u << n);
-        if (now & (1u << n))
-            eng_note_on(53u + n, ENG_ONE);
-        else
-            eng_note_off(53u + n);
+        if (now & (1u << n)) {
+            int32_t note = 53 + (int32_t)n + 12 * octave;
+            key_note[n] = (uint8_t)(note < 0 ? 0 : note > 127 ? 127 : note);
+            eng_note_on(key_note[n], ENG_ONE);
+        } else {
+            eng_note_off(key_note[n]);
+        }
     }
+}
+
+/* OCT- / OCT+ light up while the octave is shifted */
+static void leds_octave(void)
+{
+    fm1_led_key(0, octave < 0);
+    fm1_led_key(1, octave > 0);
+}
+
+/* SAVE: the current state (the patch with its edited parameters, the octave, the selected module and preset) to flash */
+static void save_state(void)
+{
+    if (!flash_ok || !m1_cur_len) {
+        ui_msg("NO FLASH", 1500);
+        return;
+    }
+    ui_msg("SAVING", 5000);
+    ui_msg(m1_store(m1_cur, m1_cur_len) ? "ERROR" : "SAVED", 1500);
+}
+
+/* The panel buttons (matrix ids as in Felucca's panel table; unknown ones are shown so they can be assigned):
+ * OCT- 0, OCT+ 1: octave; SAVE 9: save the state. */
+#define BTN_OCT_DOWN 0u
+#define BTN_OCT_UP 1u
+#define BTN_SAVE 9u
+static void buttons_poll(void)
+{
+    uint32_t rel, p = fm1_input_edges(&rel), b;
+    if (p & (1u << BTN_OCT_DOWN))
+        octave = octave > -3 ? octave - 1 : octave;
+    if (p & (1u << BTN_OCT_UP))
+        octave = octave < 3 ? octave + 1 : octave;
+    if (p & ((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP))) {
+        leds_octave();
+        header_draw();
+    }
+    if (p & (1u << BTN_SAVE))
+        save_state();
+    for (b = 0; b < 14u; b++)
+        if ((p >> b & 1u) && b != BTN_OCT_DOWN && b != BTN_OCT_UP && b != BTN_SAVE) {
+            char m[10], num[8], *q = m;
+            q = put(q, "BTN ");
+            fmt_int(num, (int32_t)b);
+            put(q, num);
+            ui_msg(m, 1000);
+        }
 }
 
 static void fm1_main(void)
@@ -493,6 +404,7 @@ static void fm1_main(void)
         }
         midi_drain();
         keys_poll();
+        buttons_poll();
         knobs_poll();
         master_poll();
         {
@@ -501,9 +413,12 @@ static void fm1_main(void)
                 t_stat = fm1_ms;
                 status_draw();
             }
+            if (msg_until && fm1_ms >= msg_until)
+                ui_msg_clear();
             if (ui_dirty) {
+                int full = ui_dirty > 1;
                 ui_dirty = 0;
-                module_draw();
+                module_draw(full);
             }
         }
         {   /* OCT- + OCT+ (matrix buttons 0 and 1) held 5 s: UBOOT, as in Felucca */

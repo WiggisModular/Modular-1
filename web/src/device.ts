@@ -26,6 +26,7 @@ export class DeviceLink {
 
   async connect(): Promise<Info> {
     if (!navigator.requestMIDIAccess) throw new Error('Web MIDI is not available in this browser (use Chrome or Edge)');
+    if (this.inp) this.inp.onmidimessage = null; // a reconnect: let go of the old port
     const access = await navigator.requestMIDIAccess({ sysex: true });
     const pick = <T extends MIDIPort>(ports: Iterable<T>): T | null => [...ports].find((p) => NAME.test(p.name ?? '') && !/ota-/i.test(p.name ?? '')) ?? null;
     this.out = pick(access.outputs.values());
@@ -134,8 +135,12 @@ export class DeviceLink {
     });
   }
 
+  private backlog = 0;
+
   private serial<T>(fn: () => Promise<T>): Promise<T> {
-    const next = this.chain.then(fn, fn);
+    if (this.backlog > 40) return Promise.reject(new Error('too many requests waiting for the FM-1: is it answering?'));
+    this.backlog++;
+    const next = this.chain.then(fn, fn).finally(() => this.backlog--);
     this.chain = next.catch(() => {});
     return next;
   }

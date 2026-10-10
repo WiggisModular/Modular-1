@@ -4,3 +4,4 @@ build/
 *.fwsc
 .DS_Store
 __pycache__/
+!web/public/firmware/*.fwsc

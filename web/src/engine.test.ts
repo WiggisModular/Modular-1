@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
-import { addModule, connect, disconnect, emptyPatch, processingOrder, removeModule, validatePatch } from './patch';
+import { addModule, connect, disconnect, emptyPatch, fromUnit, modulate, processingOrder, removeModule, toUnit, validatePatch } from './patch';
 import { PRESETS } from './presets';
 
 const SR = 48000;
@@ -281,5 +281,46 @@ describe('engine', () => {
       expect(rms(l), name).toBeGreaterThan(0.005);
       expect(rms(r), name).toBeGreaterThan(0.005);
     }
+  });
+
+  it('the filter cutoff is logarithmic: modulation moves it in octaves', () => {
+    const cutoff = DEFS.filter.params.find((q) => q.name === 'cutoff')!;
+    expect(cutoff.log).toBe(true);
+    expect(toUnit(cutoff, 20)).toBeCloseTo(0, 6);
+    expect(toUnit(cutoff, 18000)).toBeCloseTo(1, 6);
+    expect(fromUnit(cutoff, 0.5)).toBeCloseTo(Math.sqrt(20 * 18000), 3);
+    const octaves = Math.log2(18000 / 20);
+    expect(Math.log2(modulate(cutoff, 200, 0.1) / 200)).toBeCloseTo(0.1 * octaves, 6); // a tenth of the range is a tenth of the octaves
+    expect(modulate(cutoff, 200, 5)).toBeCloseTo(18000, 6);
+    const level = DEFS.osc.params.find((q) => q.name === 'level')!;
+    expect(modulate(level, 0.5, 0.25)).toBeCloseTo(0.75, 9); // the others stay linear
+  });
+
+  it('the factory presets route the knobs: K1 is the filter cutoff, K4 the delay mix, K3 the reverb mix', () => {
+    for (const [name, make] of Object.entries(PRESETS)) {
+      const p = make();
+      const panel = p.modules.find((m) => m.type === 'fm1')!;
+      const dest = (k: number) =>
+        p.cables
+          .filter((c) => c.from.module === panel.id && c.from.port === `k${k}`)
+          .map((c) => {
+            const m = p.modules.find((x) => x.id === c.to.module)!;
+            return { type: m.type, params: m.map?.[c.to.port as 'p1' | 'p2'] ?? [] };
+          });
+      for (let k = 1; k <= 4; k++) expect(dest(k).length, `${name} K${k}`).toBeGreaterThan(0);
+      if (p.modules.some((m) => m.type === 'filter')) expect(dest(1).some((d) => d.type === 'filter' && d.params.includes('cutoff')), `${name}: K1 is the cutoff`).toBe(true);
+      if (p.modules.some((m) => m.type === 'delay')) expect(dest(4).some((d) => d.type === 'delay' && d.params.includes('mix')), `${name}: K4 is the delay mix`).toBe(true);
+      if (p.modules.some((m) => m.type === 'reverb')) expect(dest(3).some((d) => d.type === 'reverb' && d.params.includes('mix')), `${name}: K3 is the reverb mix`).toBe(true);
+    }
+  });
+
+  it('knob routing leaves the sound of a preset where it was (the knobs start where the values are)', () => {
+    const p = PRESETS['Pluck']();
+    const filt = p.modules.find((m) => m.type === 'filter')!;
+    const panel = p.modules.find((m) => m.type === 'fm1')!;
+    const cutoff = DEFS.filter.params.find((q) => q.name === 'cutoff')!;
+    const moved = modulate(cutoff, filt.params.cutoff, panel.params.k1 * filt.att![0]);
+    expect(moved).toBeGreaterThan(299);
+    expect(moved).toBeLessThan(301);
   });
 });

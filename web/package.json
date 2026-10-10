@@ -10,6 +10,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "golden": "vite-node scripts/golden.ts",
+    "firmware": "node scripts/sync-firmware.mjs",
     "export-defs": "vite-node scripts/export-defs.ts"
   },
   "devDependencies": {

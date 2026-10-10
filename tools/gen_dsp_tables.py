@@ -9,6 +9,7 @@ SIN   1025 x int32, sin(2 pi i/1024) in Q30 (one extra entry for the interpolati
 EXP2  257 x uint32, 2^(i/256) in Q28
 TAN   463 x int32, tan(pi i/1024) in Q24, i up to 462 (cutoff is limited to 0.45 of the sample rate)
 EXPN  257 x uint32, 2^(-i/256) in Q31 (ADSR rates)
+LOG2  257 x uint32, log2(1 + i/256) in Q16 (logarithmic parameters)
 """
 import math
 import sys
@@ -29,6 +30,7 @@ sin = [round(math.sin(2 * math.pi * i / 1024) * (1 << 30)) for i in range(1025)]
 exp2 = [round(2 ** (i / 256) * (1 << 28)) for i in range(257)]
 tan = [round(math.tan(math.pi * i / 1024) * (1 << 24)) for i in range(463)]
 expn = [min(round(2 ** (-i / 256) * (1 << 31)), 0xFFFFFFFF) for i in range(257)]
+log2t = [round(math.log2(1 + i / 256) * 65536) for i in range(257)]
 assert max(tan) < 2 ** 31
 
 text = "\n".join([
@@ -38,6 +40,7 @@ text = "\n".join([
     arr("EXP2_T", "uint32_t", exp2, lambda v: f"{v}u"),
     arr("TAN_T", "int32_t", tan, lambda v: f"{v}"),
     arr("EXPN_T", "uint32_t", expn, lambda v: f"{v}u"),
+    arr("LOG2_T", "uint32_t", log2t, lambda v: f"{v}u"),
     "",
 ])
 OUT.write_text(text)

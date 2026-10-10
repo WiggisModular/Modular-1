@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { DEFS } from './modules';
-import { addModule, connect, emptyPatch, type Patch, type Source } from './patch';
+import { addModule, connect, emptyPatch, fromUnit, toUnit, type Patch, type Source } from './patch';
 
 export interface AddOpts {
   map?: Partial<Record<Source, string[]>>;
@@ -124,24 +124,19 @@ export const PRESETS: Record<string, () => Patch> = {
     }),
   'FM-1 Panel synth': () =>
     make('FM-1 Panel synth', (add, wire) => {
-      // the FM-1's own keys and the four knobs: K1 cutoff, K2 resonance, K3 delay mix, K4 delay time
-      const fm = add('fm1', 20, 40, { k1: 0.5, k2: 0.4, k3: 0.25, k4: 0.35 });
+      const fm = add('fm1', 20, 40);
       const osc = add('osc', 260, 20, { wave: 2, level: 0.8 });
       const env = add('adsr', 260, 430, { a: 0.005, d: 0.25, s: 0.6, r: 0.25 });
-      const flt = add('filter', 480, 20, { cutoff: 20, res: 0, cvamt: 0 }); // p1 = cutoff, p2 = resonance (the default matrix)
+      const flt = add('filter', 480, 20, { cutoff: 1500, res: 0.3, cvamt: 0 });
       const vca = add('vca', 700, 20);
-      const dly = add('delay', 700, 430, { time: 1, fb: 0.4, mix: 0 }, { map: { p1: ['mix'], p2: ['time'] } });
+      const dly = add('delay', 700, 430, { time: 300, fb: 0.4, mix: 0.3 });
       const out = add('output', 920, 40);
       wire(fm, 'pitch', osc, 'pitch');
       wire(fm, 'gate', env, 'gate');
       wire(osc, 'out', flt, 'in');
-      wire(fm, 'k1', flt, 'p1');
-      wire(fm, 'k2', flt, 'p2');
       wire(flt, 'lp', vca, 'in');
       wire(env, 'env', vca, 'cv');
       wire(vca, 'out', dly, 'in');
-      wire(fm, 'k3', dly, 'p1');
-      wire(fm, 'k4', dly, 'p2');
       wire(dly, 'out', out, 'l');
     }),
 
@@ -193,7 +188,9 @@ export const PRESETS: Record<string, () => Patch> = {
       wire(mix, 'out', flt, 'in');
       wire(lfo, 'out', flt, 'cv');
       wire(v, 'out', dly, 'in');
-      toOut(add, wire, dly, 'out', 0.7, 6);
+      const rv = add('reverb', ...L(6), { size: 0.7, damp: 0.5, mix: 0.3 });
+      wire(dly, 'out', rv, 'in');
+      toOut(add, wire, rv, 'out', 0.7, 7);
     }),
   'Square Lead': () =>
     make('Square Lead', (add, wire) => {
@@ -228,7 +225,9 @@ export const PRESETS: Record<string, () => Patch> = {
       wire(nz, 'out', flt, 'in');
       wire(lfo, 'out', flt, 'cv');
       wire(v, 'out', dly, 'in');
-      toOut(add, wire, dly, 'out', 0.7, 6);
+      const rv = add('reverb', ...L(6), { size: 0.8, damp: 0.5, mix: 0.35 });
+      wire(dly, 'out', rv, 'in');
+      toOut(add, wire, rv, 'out', 0.7, 7);
     }),
   'Hi-hat': () =>
     make('Hi-hat', (add, wire) => {
@@ -330,7 +329,9 @@ export const PRESETS: Record<string, () => Patch> = {
       wire(kb, 'pitch', car, 'pitch');
       wire(mv, 'out', car, 'pm');
       wire(v, 'out', dly, 'in');
-      toOut(add, wire, dly, 'out', 0.7, 7);
+      const rv = add('reverb', ...L(7), { size: 0.6, damp: 0.3, mix: 0.25 });
+      wire(dly, 'out', rv, 'in');
+      toOut(add, wire, rv, 'out', 0.7, 8);
     }),
   'Electric Piano': () =>
     make('Electric Piano', (add, wire) => {
@@ -342,7 +343,9 @@ export const PRESETS: Record<string, () => Patch> = {
       wire(kb, 'pitch', mod, 'pitch');
       wire(kb, 'pitch', car, 'pitch');
       wire(mv, 'out', car, 'pm');
-      toOut(add, wire, v, 'out', 0.7, 6);
+      const rv = add('reverb', ...L(5), { size: 0.5, damp: 0.5, mix: 0.2 });
+      wire(v, 'out', rv, 'in');
+      toOut(add, wire, rv, 'out', 0.7, 6);
     }),
   Brass: () =>
     make('Brass', (add, wire) => {
@@ -378,7 +381,9 @@ export const PRESETS: Record<string, () => Patch> = {
       wire(mix, 'out', flt, 'in');
       wire(lfo, 'out', flt, 'cv');
       wire(v, 'out', dly, 'in');
-      toOut(add, wire, dly, 'out', 0.7, 7);
+      const rv = add('reverb', ...L(7), { size: 0.75, damp: 0.5, mix: 0.3 });
+      wire(dly, 'out', rv, 'in');
+      toOut(add, wire, rv, 'out', 0.7, 8);
     }),
   'Wobble 2': () =>
     make('Wobble 2', (add, wire) => {
@@ -505,7 +510,9 @@ export const PRESETS: Record<string, () => Patch> = {
       wire(a, 'out', mix, 'in1');
       wire(b, 'out', mix, 'in2');
       wire(v, 'out', dly, 'in');
-      toOut(add, wire, dly, 'out', 0.7, 6);
+      const rv = add('reverb', ...L(6), { size: 0.8, damp: 0.3, mix: 0.35 });
+      wire(dly, 'out', rv, 'in');
+      toOut(add, wire, rv, 'out', 0.7, 7);
     }),
   'Fat Mono': () =>
     make('Fat Mono', (add, wire) => {
@@ -529,3 +536,81 @@ export const PRESETS: Record<string, () => Patch> = {
       toOut(add, wire, v, 'out', 0.7, 5);
     }),
 };
+
+/**
+ * What the FM-1's knobs K1..K4 do in each factory preset. [knob, module, parameter, how much of the parameter's range the knob sweeps].
+ * A module is a type, or `type#n` for the n-th module of that type. Every module has two parameter inputs, so at most two knobs per module.
+ * The knob's start position and the module's base value are chosen so the sound at the preset's own values is unchanged.
+ * Rules: K4 is the delay mix whenever there is a delay; K3 the reverb mix when there is a reverb; K1 / K2 the filter's cutoff and
+ * resonance when there is a filter.
+ */
+type KnobBinding = [number, string, string, number];
+const KNOBS: Record<string, KnobBinding[]> = {
+  '303 Acid': [[1, 'filter', 'cutoff', 0.35], [2, 'filter', 'res', 0.6], [3, 'adsr#1', 'd', 0.2], [4, 'delay', 'mix', 1]],
+  'Subtractive saw': [[1, 'filter', 'cutoff', 0.35], [2, 'filter', 'res', 0.6], [3, 'adsr', 'r', 0.3], [4, 'vca', 'gain', 0.5]],
+  'Two-operator FM': [[1, 'osc#2', 'pm', 0.5], [2, 'osc#1', 'coarse', 0.25], [3, 'adsr#2', 'd', 0.3], [4, 'vca#2', 'gain', 0.5]],
+  'Wobble bass': [[1, 'filter', 'cutoff', 0.35], [2, 'filter', 'res', 0.6], [3, 'lfo', 'rate', 0.3], [4, 'vca', 'gain', 0.5]],
+  'FM-1 Panel synth': [[1, 'filter', 'cutoff', 0.35], [2, 'filter', 'res', 0.6], [3, 'delay', 'time', 0.5], [4, 'delay', 'mix', 1]],
+  'Sub Bass': [[1, 'filter', 'cutoff', 0.35], [2, 'osc#2', 'level', 0.6], [3, 'adsr', 'r', 0.3], [4, 'vca', 'gain', 0.5]],
+  Pluck: [[1, 'filter', 'cutoff', 0.35], [2, 'filter', 'res', 0.6], [3, 'adsr#1', 'd', 0.2], [4, 'delay', 'mix', 1]],
+  'Warm Pad': [[1, 'filter', 'cutoff', 0.35], [2, 'lfo', 'depth', 0.6], [3, 'reverb', 'mix', 1], [4, 'delay', 'mix', 1]],
+  'Square Lead': [[1, 'filter', 'cutoff', 0.35], [2, 'filter', 'res', 0.6], [3, 'osc', 'pw', 0.5], [4, 'delay', 'mix', 1]],
+  'PWM Pad': [[1, 'lfo', 'rate', 0.15], [2, 'lfo', 'depth', 1], [3, 'adsr', 'a', 0.3], [4, 'vca', 'gain', 0.5]],
+  Wind: [[1, 'filter', 'cutoff', 0.35], [2, 'filter', 'res', 0.6], [3, 'reverb', 'mix', 1], [4, 'delay', 'mix', 1]],
+  'Hi-hat': [[1, 'filter', 'cutoff', 0.5], [2, 'filter', 'res', 0.6], [3, 'adsr', 'd', 0.1], [4, 'vca', 'gain', 0.5]],
+  Snare: [[1, 'filter', 'cutoff', 0.35], [2, 'filter', 'res', 0.6], [3, 'adsr', 'd', 0.1], [4, 'mixer', 'l2', 1]],
+  Kick: [[1, 'scale', 'gain', 0.5], [2, 'adsr#1', 'd', 0.1], [3, 'adsr#2', 'd', 0.1], [4, 'vca', 'gain', 0.5]],
+  Laser: [[1, 'scale', 'gain', 0.5], [2, 'adsr#1', 'd', 0.1], [3, 'adsr#2', 'd', 0.1], [4, 'delay', 'mix', 1]],
+  Siren: [[1, 'lfo', 'rate', 0.1], [2, 'scale', 'gain', 0.1], [3, 'adsr', 'r', 0.2], [4, 'vca', 'gain', 0.5]],
+  'Vibrato Lead': [[1, 'filter', 'cutoff', 0.35], [2, 'filter', 'res', 0.6], [3, 'lfo', 'rate', 0.15], [4, 'scale', 'gain', 0.05]],
+  Organ: [[1, 'mixer', 'l1', 1], [2, 'mixer', 'l2', 1], [3, 'adsr', 'r', 0.1], [4, 'vca', 'gain', 0.5]],
+  'FM Bell': [[1, 'osc#2', 'pm', 0.5], [2, 'adsr#1', 'd', 0.3], [3, 'reverb', 'mix', 1], [4, 'delay', 'mix', 1]],
+  'Electric Piano': [[1, 'osc#2', 'pm', 0.4], [2, 'adsr#1', 'd', 0.15], [3, 'reverb', 'mix', 1], [4, 'vca#2', 'gain', 0.5]],
+  Brass: [[1, 'filter', 'cutoff', 0.35], [2, 'filter', 'res', 0.6], [3, 'adsr#1', 'a', 0.15], [4, 'vca', 'gain', 0.5]],
+  Strings: [[1, 'filter', 'cutoff', 0.35], [2, 'lfo', 'depth', 0.6], [3, 'reverb', 'mix', 1], [4, 'delay', 'mix', 1]],
+  'Wobble 2': [[1, 'filter', 'cutoff', 0.35], [2, 'filter', 'res', 0.6], [3, 'lfo', 'rate', 0.3], [4, 'vca', 'gain', 0.5]],
+  'Echo Pluck': [[1, 'delay', 'time', 0.5], [2, 'osc', 'level', 0.5], [3, 'adsr', 'd', 0.15], [4, 'delay', 'mix', 1]],
+  'Dub Stab': [[1, 'filter', 'cutoff', 0.35], [2, 'filter', 'res', 0.6], [3, 'delay', 'fb', 0.5], [4, 'delay', 'mix', 1]],
+  'Noise Sweep': [[1, 'filter', 'cutoff', 0.35], [2, 'filter', 'res', 0.6], [3, 'adsr#1', 'a', 0.3], [4, 'vca', 'gain', 0.5]],
+  Metal: [[1, 'osc#2', 'pm', 0.5], [2, 'osc#1', 'fine', 0.5], [3, 'adsr', 'd', 0.1], [4, 'vca', 'gain', 0.5]],
+  Drone: [[1, 'filter', 'cutoff', 0.35], [2, 'filter', 'res', 0.6], [3, 'lfo', 'rate', 0.05], [4, 'delay', 'mix', 1]],
+  'Tremolo Keys': [[1, 'lfo', 'rate', 0.15], [2, 'scale', 'gain', 0.1], [3, 'adsr', 'r', 0.1], [4, 'vca#1', 'gain', 0.5]],
+  'S&H Bleeps': [[1, 'lfo', 'rate', 0.2], [2, 'scale', 'gain', 0.1], [3, 'adsr', 'd', 0.1], [4, 'delay', 'mix', 1]],
+  Glass: [[1, 'mixer', 'l2', 1], [2, 'adsr', 'a', 0.1], [3, 'reverb', 'mix', 1], [4, 'delay', 'mix', 1]],
+  'Fat Mono': [[1, 'filter', 'cutoff', 0.35], [2, 'filter', 'res', 0.6], [3, 'adsr#1', 'd', 0.15], [4, 'vca', 'gain', 0.5]],
+};
+
+/** wire the panel's knobs to the parameters the table names, on a freshly built factory patch */
+function bindKnobs(p: Patch, name: string): Patch {
+  const panel = p.modules.find((m) => m.type === 'fm1');
+  const used = new Map<number, number>(); // module id -> parameter inputs taken
+  if (!panel) return p;
+  for (const [knob, sel, param, swing] of KNOBS[name] ?? []) {
+    const [type, nth] = sel.split('#');
+    const m = p.modules.filter((x) => x.type === type)[Number(nth ?? 1) - 1];
+    const pd = m && DEFS[m.type].params.find((q) => q.name === param);
+    if (!m || !pd) throw new Error(`preset ${name}: no ${sel}.${param}`);
+    let pin = -1;
+    for (let i = 0; i < 2; i++) {
+      const wired = p.cables.some((c) => c.to.module === m.id && c.to.port === `p${i + 1}`);
+      if (!wired && pin < 0 && (used.get(m.id) ?? 0) <= i) pin = i;
+    }
+    if (pin < 0) throw new Error(`preset ${name}: ${sel} has no free parameter input for K${knob}`);
+    used.set(m.id, pin + 1);
+    // work in the parameter's own space (octaves for the cutoff): the knob sweeps `swing` of the range
+    const u0 = toUnit(pd, m.params[param]);
+    const baseU = Math.min(1, Math.max(0, u0 - 0.5 * swing));
+    const base = fromUnit(pd, baseU);
+    panel.params[`k${knob}`] = Math.min(1, Math.max(0, (u0 - baseU) / swing)); // where the knob starts: the sound is unchanged
+    m.params[param] = base;
+    m.att![pin] = swing;
+    m.map![pin === 0 ? 'p1' : 'p2'] = [param];
+    if (!connect(p, DEFS, { module: panel.id, port: `k${knob}` }, { module: m.id, port: `p${pin + 1}` })) throw new Error(`preset ${name}: cannot wire K${knob}`);
+  }
+  return p;
+}
+
+for (const name of Object.keys(PRESETS)) {
+  const build = PRESETS[name];
+  PRESETS[name] = () => bindKnobs(build(), name);
+}

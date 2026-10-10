@@ -19,12 +19,16 @@ export type HostMsg =
 
 class ModularProcessor extends AudioWorkletProcessor {
   private engine = new Engine(sampleRate);
+  private failed = false;
   constructor() {
     super();
     this.port.onmessage = (ev: MessageEvent<HostMsg>) => {
       const m = ev.data;
       try {
-        if (m.t === 'patch') this.engine.load(m.patch);
+        if (m.t === 'patch') {
+          this.engine.load(m.patch);
+          this.failed = false;
+        }
         else if (m.t === 'param') this.engine.setParam(m.id, m.name, m.value);
         else if (m.t === 'att') this.engine.setAtt(m.id, m.index, m.value);
         else if (m.t === 'on') this.engine.noteOn(m.note, m.vel);
@@ -37,7 +41,14 @@ class ModularProcessor extends AudioWorkletProcessor {
   }
   process(_in: Float32Array[][], outputs: Float32Array[][]): boolean {
     const out = outputs[0];
-    this.engine.render(out[0], out[1] ?? out[0]);
+    try {
+      this.engine.render(out[0], out[1] ?? out[0]);
+    } catch (e) {
+      if (!this.failed) this.port.postMessage({ error: `engine: ${e}` });
+      this.failed = true; // stay silent instead of throwing in the audio thread on every block
+      out[0].fill(0);
+      out[1]?.fill(0);
+    }
     return true;
   }
 }

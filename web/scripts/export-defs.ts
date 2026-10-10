@@ -44,10 +44,15 @@ w('    int8_t cvbase;          /* index of the p1 input (p2 follows), -1: the mo
 w('    const int32_t *pmin, *pmax, *pdef, *pinc;   /* Q16.16; pinc: what one knob click adds */');
 w('    const char *name;       /* upper case, for the LCD */');
 w('    const char *const *pname;');
+w('    const char *const *inname;              /* input names, upper case */');
+w('    const uint8_t *plog;                    /* 1: a logarithmic parameter (the filter cutoff) */');
+w('    const char *const *punit;               /* "HZ", "ST", ... or "" */');
+w('    const char *const *const *pchoice;      /* per parameter: the names of a choice parameter (0-terminated), or 0 */');
 w('} def_t;');
 w();
 for (const t of TYPE_ORDER) {
   const ps = DEFS[t].params;
+  w(`static const char *const ${up(t)}_INNAMES[] = {${DEFS[t].inputs.map((p) => `"${p.name.toUpperCase()}"`).join(', ') || '0'}};`);
   if (!ps.length) continue;
   const row = (f: (p: (typeof ps)[number]) => number): string => ps.map((p) => toQ16(f(p))).join(', ');
   w(`static const int32_t ${up(t)}_MIN[] = {${row((p) => p.min)}};`);
@@ -55,6 +60,12 @@ for (const t of TYPE_ORDER) {
   w(`static const int32_t ${up(t)}_DEF[] = {${row((p) => p.default)}};`);
   w(`static const int32_t ${up(t)}_INC[] = {${row((p) => Math.max(p.step ?? 0, (p.max - p.min) / 100))}};`);
   w(`static const char *const ${up(t)}_PN[] = {${ps.map((p) => `"${p.name.toUpperCase()}"`).join(', ')}};`);
+  w(`static const uint8_t ${up(t)}_LOG[] = {${ps.map((p) => (p.log ? 1 : 0)).join(', ')}};`);
+  w(`static const char *const ${up(t)}_UNIT[] = {${ps.map((p) => `"${(p.unit ?? '').toUpperCase()}"`).join(', ')}};`);
+  ps.forEach((p, i) => {
+    if (p.choices) w(`static const char *const ${up(t)}_CH${i}[] = {${p.choices.map((c) => `"${c.toUpperCase()}"`).join(', ')}, 0};`);
+  });
+  w(`static const char *const *const ${up(t)}_CH[] = {${ps.map((p, i) => (p.choices ? `${up(t)}_CH${i}` : '0')).join(', ')}};`);
 }
 w();
 w('static const def_t DEFS[N_TYPES] = {');
@@ -62,7 +73,7 @@ for (const t of TYPE_ORDER) {
   const d = DEFS[t];
   const has = d.params.length > 0;
   const n = up(t);
-  w(`    {${n}_NIN, ${n}_NOUT, ${n}_NPAR, ${n}_CVBASE, ${has ? `${n}_MIN, ${n}_MAX, ${n}_DEF, ${n}_INC` : '0, 0, 0, 0'}, "${d.label.toUpperCase()}", ${has ? `${n}_PN` : '0'}},   /* ${t} */`);
+  w(`    {${n}_NIN, ${n}_NOUT, ${n}_NPAR, ${n}_CVBASE, ${has ? `${n}_MIN, ${n}_MAX, ${n}_DEF, ${n}_INC` : '0, 0, 0, 0'}, "${d.label.toUpperCase()}", ${has ? `${n}_PN` : '0'}, ${n}_INNAMES, ${has ? `${n}_LOG, ${n}_UNIT, ${n}_CH` : '0, 0, 0'}},   /* ${t} */`);
 }
 w('};');
 w();

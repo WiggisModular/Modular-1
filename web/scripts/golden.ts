@@ -131,6 +131,21 @@ kit('matrix-att', (add, wire) => {
   wire(flt, 'lp', out, 'l');
 });
 
+kit('reverb', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const osc = add('osc', 0, 0, { wave: 0, level: 0.8 });
+  const env = add('adsr', 0, 0, { a: 0.002, d: 0.05, s: 0, r: 0.05 });
+  const vca = add('vca', 0, 0);
+  const rv = add('reverb', 0, 0, { size: 0.8, damp: 0.3, mix: 0.6 });
+  const out = add('output', 0, 0);
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(kb, 'gate', env, 'gate');
+  wire(osc, 'out', vca, 'in');
+  wire(env, 'env', vca, 'cv');
+  wire(vca, 'out', rv, 'in');
+  wire(rv, 'out', out, 'l');
+});
+
 const slug = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 for (const [name, patch] of Object.entries(tests)) {
   const e = new Engine(SR);
