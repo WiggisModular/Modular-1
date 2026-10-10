@@ -28,6 +28,8 @@ Builds with `tools/build.py` inside `nix develop` (see CLAUDE.md), flashes with 
 - `tools/golden.sh` renders 11 patches with the TypeScript engine and the C engine (host build) and compares them. Smooth patches agree to about 0.1 % rms (-60 dB), patches with saw/square edges to 1-2 % rms: the Q16 pitch grid moves an edge by a fraction of a sample, which gives short spikes at the edges and no audible difference.
 - Memory: signal buffers 82 KB and two delay lines of 93 KB (int16, Q13) sit in the 360 KB pool; limits are 32 modules, 192 cables, 2 delays.
 
+Measured on the FM-1: the 303 Acid factory patch (8 modules, one delay) uses 11 % of the audio budget (peak 12 %).
+
 Not done yet: patch upload over SysEx, live parameter changes from the editor, the FM-1's own keys and knobs, storing a patch in flash.
 
 ## Open questions

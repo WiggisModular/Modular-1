@@ -100,7 +100,7 @@ static void screen_idle(void)
     } else {
         text5x7(12, 120, PRESET_LIST[cur_preset].name, 2, C_FG, C_BG);
     }
-    text5x7(12, 190, "PROGRAM CHANGE: PATCH", 1, C_FG, C_BG);
+    text5x7(12, 190, "KEYS + MIDI. PROGRAM CHANGE: PATCH", 1, C_FG, C_BG);
     status_draw();
 }
 
@@ -138,6 +138,49 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
     midi_in_overflow = 0;
 }
 
+/* MASTER pot (ADC 0..1023, square law): read before the audio starts, then smoothed per main-loop pass */
+static int32_t master_knob = 512 * 16;
+static void master_poll(void)
+{
+    int32_t a = fm1_adc_read(FM1_ADC_MASTER);
+    if (a >= 0) {
+        uint32_t k;
+        master_knob += (a * 16 - master_knob) / 8;
+        k = (uint32_t)(master_knob / 16);
+        master_q12 = (k * k) >> 8;
+    }
+}
+
+static void master_boot(void)
+{
+    uint32_t i;
+    (void)fm1_adc_read(FM1_ADC_MASTER);                 /* the first conversion after the pin setup: dropped */
+    for (i = 0; i < 3u; i++) {
+        int32_t a = fm1_adc_read(FM1_ADC_MASTER);
+        if (a >= 0) {
+            master_knob = a * 16;
+            master_q12 = ((uint32_t)a * (uint32_t)a) >> 8;
+            return;
+        }
+    }
+}
+
+static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F3 = MIDI 53) -> the engine */
+{
+    static uint32_t prev;
+    uint32_t now = fm1_in.notes, diff = now ^ prev, n;
+    prev = now;
+    for (n = 0; diff && n < 27u; n++) {
+        if (!(diff & (1u << n)))
+            continue;
+        diff &= ~(1u << n);
+        if (now & (1u << n))
+            eng_note_on(53u + n, ENG_ONE);
+        else
+            eng_note_off(53u + n);
+    }
+}
+
 static void fm1_main(void)
 {
     uint32_t t_btn = 0;
@@ -146,6 +189,8 @@ static void fm1_main(void)
         ota_boot_cleanup();                             /* staging area left by an update */
     lcd_init();
     fm1_input_init();
+    fm1_adc_init();
+    master_boot();
     audio_init();
     usb_start();
     fm1_timer5_start(isr_timer5, 4);
@@ -161,6 +206,8 @@ static void fm1_main(void)
             bootguard.failed = 0;
         }
         midi_drain();
+        keys_poll();
+        master_poll();
         {
             static uint32_t t_stat;
             if (fm1_ms - t_stat >= 250u) {

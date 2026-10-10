@@ -8,7 +8,7 @@
 #define FELUCCA_ID "FM-1_800"    /* package identity (build.py: the .fwsc marker string) */
 #endif
 #ifndef FELUCCA_VERSION
-#define FELUCCA_VERSION "M1-0.1"
+#define FELUCCA_VERSION "M1-0.2"
 #endif
 #define FELUCCA_FLASH 1
 #define FELUCCA_OTA 1
@@ -26,6 +26,7 @@
 #include "fm1_input.h"
 #include "fm1_timer.h"
 #include "fm1_audio.h"
+#include "fm1_adc.h"
 #include "fm1_flash.h"
 #include "fm1_lcd_hw.h"
 #define RING_PUBLISH() __asm__ volatile("" ::: "memory")
