@@ -4,7 +4,7 @@ import type { AudioHost } from './audio';
 
 const KEYS = 'awsedftgyhujkolp';
 
-export function attachKeyboard(host: AudioHost, isActive: () => boolean): void {
+export function attachKeyboard(host: Pick<AudioHost, 'send'>, isActive: () => boolean): void {
   let octave = 0;
   const down = new Map<string, number>();
   const editable = (t: EventTarget | null): boolean => t instanceof HTMLElement && (t.tagName === 'SELECT' || (t.tagName === 'INPUT' && (t as HTMLInputElement).type !== 'range') || t.isContentEditable);
@@ -34,7 +34,7 @@ export function attachKeyboard(host: AudioHost, isActive: () => boolean): void {
   });
 }
 
-export async function attachMidi(host: AudioHost, status: (s: string) => void): Promise<void> {
+export async function attachMidi(host: Pick<AudioHost, 'send'>, status: (s: string) => void): Promise<void> {
   if (!navigator.requestMIDIAccess) return status('Web MIDI is not available in this browser');
   try {
     const access = await navigator.requestMIDIAccess();

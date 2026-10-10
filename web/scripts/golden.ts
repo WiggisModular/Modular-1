@@ -4,7 +4,9 @@
 // Run from web/:  npx vite-node scripts/golden.ts   (tools/golden.sh does this and runs the C comparison)
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { Engine } from '../src/engine';
-import { encodePatch } from '../src/patchbin';
+import { encodePatch, toQ16 } from '../src/patchbin';
+import { DEFS } from '../src/modules';
+import { chunkFrames, commitFrame, paramFrame } from '../src/protocol';
 import { make, PRESETS, type Build } from '../src/presets';
 import type { Patch } from '../src/patch';
 
@@ -145,5 +147,16 @@ for (const [name, patch] of Object.entries(tests)) {
   writeFileSync(new URL(`${f}.m1p`, OUT), encodePatch(patch));
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
   writeFileSync(new URL(`${f}.ev`, OUT), EVENTS.map(([fr, k, n]) => (k === 'on' ? `${fr} on ${n} 127` : `${fr} off ${n}`)).join('\n') + `\n${END} end\n`);
+}
+// protocol test input: upload of 303 Acid, then a cutoff change on its filter
+{
+  const p = PRESETS['303 Acid']();
+  const bin = encodePatch(p);
+  const mod = p.modules.findIndex((m) => m.type === 'filter');
+  const par = DEFS.filter.params.findIndex((x) => x.name === 'cutoff');
+  const val = toQ16(900);
+  const frames = [...chunkFrames(bin, 50), commitFrame(bin), paramFrame(mod, par, val)];
+  writeFileSync(new URL('proto.syx', OUT), Buffer.concat(frames));
+  writeFileSync(new URL('proto.args', OUT), `${mod} ${par} ${val}\n`);
 }
 console.log(`golden vectors for ${Object.keys(tests).length} patches in build/golden/`);

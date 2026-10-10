@@ -1,0 +1,129 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// The FM-1 as a Web MIDI SysEx peer: patch upload, store, live parameters (wire format: protocol.ts).
+import { DEFS } from './modules';
+import type { Patch } from './patch';
+import { encodePatch, toQ16 } from './patchbin';
+import { chunkFrames, CMD, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+
+const NAME = /felucca|fm-?1|modular/i;
+const ACK_TIMEOUT = 700;
+const TRIES = 3;
+
+export class DeviceLink {
+  private out: MIDIOutput | null = null;
+  private inp: MIDIInput | null = null;
+  private waiter: { match: (p: ReturnType<typeof parse>) => boolean; done: (p: NonNullable<ReturnType<typeof parse>>) => void } | null = null;
+  private chain: Promise<unknown> = Promise.resolve();
+  private paramQueue = new Map<string, [number, number, number]>();
+  private paramTimer = 0;
+  info: Info | null = null;
+  onStatus: (s: string) => void = () => {};
+
+  get connected(): boolean {
+    return !!this.out && this.out.state === 'connected';
+  }
+
+  async connect(): Promise<Info> {
+    if (!navigator.requestMIDIAccess) throw new Error('Web MIDI is not available in this browser (use Chrome or Edge)');
+    const access = await navigator.requestMIDIAccess({ sysex: true });
+    const pick = <T extends MIDIPort>(ports: Iterable<T>): T | null => [...ports].find((p) => NAME.test(p.name ?? '') && !/ota-/i.test(p.name ?? '')) ?? null;
+    this.out = pick(access.outputs.values());
+    this.inp = pick(access.inputs.values());
+    if (!this.out || !this.inp) throw new Error('FM-1 not found. Is it connected and running the Modular-1 firmware?');
+    this.inp.onmidimessage = (ev) => {
+      const p = ev.data ? parse(ev.data) : null;
+      if (p && this.waiter?.match(p)) {
+        const w = this.waiter;
+        this.waiter = null;
+        w.done(p);
+      }
+    };
+    access.onstatechange = () => {
+      if (this.out?.state !== 'connected') this.onStatus('FM-1 disconnected');
+    };
+    return this.hello();
+  }
+
+  private request(frame: Uint8Array, match: (p: ReturnType<typeof parse>) => boolean): Promise<NonNullable<ReturnType<typeof parse>>> {
+    return new Promise((resolve, reject) => {
+      let tries = 0;
+      const attempt = (): void => {
+        tries++;
+        const t = window.setTimeout(() => {
+          this.waiter = null;
+          if (tries < TRIES) attempt();
+          else reject(new Error('no answer from the FM-1'));
+        }, ACK_TIMEOUT);
+        this.waiter = {
+          match,
+          done: (p) => {
+            clearTimeout(t);
+            resolve(p);
+          },
+        };
+        this.out!.send(frame);
+      };
+      attempt();
+    });
+  }
+
+  async hello(): Promise<Info> {
+    const p = await this.request(helloFrame(), (x) => x?.cmd === CMD.info);
+    this.info = parseInfo(p);
+    if (!this.info) throw new Error('unexpected answer to HELLO');
+    return this.info;
+  }
+
+  private async ackFor(frame: Uint8Array, cmd: number): Promise<Ack> {
+    const p = await this.request(frame, (x) => x?.cmd === CMD.ack && x.payload[0] === cmd);
+    const a = parseAck(p)!;
+    if (a.status) throw new Error(`FM-1: ${STATUS_TEXT[a.status] ?? `error ${a.status}`}${a.aux ? ` (${a.aux})` : ''}`);
+    return a;
+  }
+
+  /** Upload and switch to the patch. Calls are serialised. */
+  upload(patch: Patch): Promise<void> {
+    const run = async (): Promise<void> => {
+      const bin = encodePatch(patch);
+      for (const f of chunkFrames(bin)) await this.ackFor(f, CMD.chunk);
+      await this.ackFor(commitFrame(bin), CMD.commit);
+    };
+    return this.serial(run);
+  }
+
+  store(): Promise<void> {
+    return this.serial(async () => {
+      await this.ackFor(storeFrame(), CMD.store);
+    });
+  }
+
+  private serial<T>(fn: () => Promise<T>): Promise<T> {
+    const next = this.chain.then(fn, fn);
+    this.chain = next.catch(() => {});
+    return next;
+  }
+
+  /** A live parameter change; the latest value per parameter is sent every 25 ms. */
+  param(patch: Patch, moduleId: number, name: string, value: number): void {
+    if (!this.connected) return;
+    const mi = patch.modules.findIndex((m) => m.id === moduleId);
+    if (mi < 0) return;
+    const pi = DEFS[patch.modules[mi].type].params.findIndex((p) => p.name === name);
+    if (pi < 0) return;
+    this.paramQueue.set(`${mi}.${pi}`, [mi, pi, toQ16(value)]);
+    if (!this.paramTimer)
+      this.paramTimer = window.setTimeout(() => {
+        this.paramTimer = 0;
+        const q = [...this.paramQueue.values()];
+        this.paramQueue.clear();
+        for (const [m, p, v] of q) this.out?.send(paramFrame(m, p, v));
+      }, 25);
+  }
+
+  note(msg: { t: string; note?: number; vel?: number }): void {
+    if (!this.connected) return;
+    if (msg.t === 'on') this.out!.send([0x90, msg.note! & 0x7f, Math.max(1, Math.round((msg.vel ?? 1) * 127))]);
+    else if (msg.t === 'off') this.out!.send([0x80, msg.note! & 0x7f, 0]);
+    else if (msg.t === 'panic') this.out!.send([0xb0, 123, 0]);
+  }
+}

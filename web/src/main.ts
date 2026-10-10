@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { AudioHost } from './audio';
+import type { HostMsg } from './worklet';
+import { DeviceLink } from './device';
 import { Editor } from './editor';
 import { buildFlashTab } from './flasher';
 import { attachKeyboard, attachMidi } from './input';
@@ -38,14 +40,58 @@ const queueSave = (p: Patch): void => {
   saveTimer = window.setTimeout(() => save(p), 300);
 };
 
+const device = new DeviceLink();
+const live = (): boolean => device.connected && $<HTMLInputElement>('dev-live').checked;
+let uploadTimer = 0;
+let uploading = false;
+let dirty = false;
+const devStatus = (s: string): void => {
+  $('dev-status').textContent = s;
+};
+device.onStatus = devStatus;
+/** upload the current patch; changes made meanwhile cause one more upload */
+async function sendPatch(): Promise<void> {
+  if (uploading) {
+    dirty = true;
+    return;
+  }
+  uploading = true;
+  try {
+    do {
+      dirty = false;
+      devStatus('sending patch…');
+      await device.upload(editor.patch);
+      devStatus('patch on the FM-1');
+    } while (dirty);
+  } catch (e) {
+    devStatus(`${(e as Error).message}`);
+  } finally {
+    uploading = false;
+  }
+}
+const queueUpload = (): void => {
+  clearTimeout(uploadTimer);
+  uploadTimer = window.setTimeout(() => void sendPatch(), 150);
+};
+/** notes go to the browser engine and, with Live on, to the FM-1 */
+const sink = {
+  send(msg: HostMsg): void {
+    host.send(msg);
+    if (live()) device.note(msg as { t: string; note?: number; vel?: number });
+  },
+};
+
 const editor = new Editor($('canvas'), loadSaved() ?? PRESETS['Subtractive saw'](), {
   onStructure(p) {
     host.setPatch(p);
     queueSave(p);
+    if (live()) queueUpload();
   },
   onParam(id, name, value) {
     host.send({ t: 'param', id, name, value });
     queueSave(editor.patch);
+    if (live() && !uploading) device.param(editor.patch, id, name, value);
+    else if (live()) dirty = true;
   },
   onError(msg) {
     status.textContent = msg;
@@ -71,7 +117,32 @@ nameInput.oninput = () => {
 const typeSel = $<HTMLSelectElement>('add-type');
 typeSel.append(...Object.values(DEFS).map((d) => new Option(d.label, d.type)));
 $('add-btn').onclick = () => editor.add(typeSel.value);
-$('panic-btn').onclick = () => host.send({ t: 'panic' });
+$('panic-btn').onclick = () => sink.send({ t: 'panic' });
+
+// FM-1 link
+$('dev-btn').onclick = async () => {
+  try {
+    const info = await device.connect();
+    devStatus(`FM-1 connected (protocol ${info.version}, up to ${info.maxModules} modules, flash ${info.flashOk ? 'ok' : 'not available'})`);
+    for (const id of ['dev-live', 'dev-send', 'dev-store']) $<HTMLInputElement>(id).disabled = false;
+    $('dev-btn').textContent = 'Reconnect';
+  } catch (e) {
+    devStatus((e as Error).message);
+  }
+};
+$('dev-send').onclick = () => void sendPatch();
+$('dev-live').onchange = () => {
+  if ($<HTMLInputElement>('dev-live').checked) void sendPatch();
+};
+$('dev-store').onclick = async () => {
+  try {
+    await sendPatch();
+    await device.store();
+    devStatus('stored: the FM-1 starts with this patch');
+  } catch (e) {
+    devStatus((e as Error).message);
+  }
+};
 
 $('save-btn').onclick = () => {
   const blob = new Blob([JSON.stringify(editor.patch, null, 2)], { type: 'application/json' });
@@ -104,8 +175,8 @@ $('audio-btn').onclick = async () => {
     status.textContent = `audio failed: ${e}`;
   }
 };
-attachKeyboard(host, () => currentTab === 'patch');
-attachMidi(host, (s) => {
+attachKeyboard(sink, () => currentTab === 'patch');
+attachMidi(sink, (s) => {
   if (!host.running) status.textContent = s;
 });
 

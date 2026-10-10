@@ -42,6 +42,11 @@ Benchmark (`firmware/src/bench.c`, numbers in docs/ARCHITECTURE.md): no FPU, flo
 - Device: audio ISR renders the engine; MIDI program change = factory patch, LCD shows CPU %. Build passes; flash it and read the CPU figure for the 303 Acid preset before anything else.
 - `firmware/src/bench.c` is only compiled with `-DM1_BENCH`.
 
+## Patch transfer (M1-0.3, host-tested, NOT yet run on the device)
+
+- SysEx protocol in `web/src/protocol.ts` (documented there) <-> `firmware/src/proto.c`; hooks and flash store in `main.c` / `patchstore.c`; browser side `web/src/device.ts` + toolbar in `index.html`/`main.ts`; terminal tool `tools/m1_link.py` (`info`, `upload build/golden/303-acid.m1p`, `param`, `store`, `note`).
+- First thing to do after flashing M1-0.3: `nix develop -c python3 tools/m1_link.py info`, then upload, param, store, power-cycle (the stored patch must come back: label `STORED PATCH`). Flash writes by the app (sectors 0x97000/0x98000) have never run on the device.
+
 ## Not verified — do not claim otherwise
 
 - The flash tab and installer have never run against a real FM-1 in this project.

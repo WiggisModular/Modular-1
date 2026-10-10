@@ -30,7 +30,9 @@ Builds with `tools/build.py` inside `nix develop` (see CLAUDE.md), flashes with 
 
 Measured on the FM-1: the 303 Acid factory patch (8 modules, one delay) uses 11 % of the audio budget (peak 12 %).
 
-Not done yet: patch upload over SysEx, live parameter changes from the editor, the FM-1's own keys and knobs, storing a patch in flash.
+Patch transfer (M1-0.3): `web/src/protocol.ts` defines the SysEx messages (`F0 7D 4D 31 cmd payload F7`, payload packed to 7 bit): HELLO/INFO, patch upload in 384-byte CHUNKs with an ACK each, COMMIT with a CRC-16, STORE, live PARAM. `firmware/src/proto.c` implements it (host-tested bit-exactly by `firmware/test/proto_test.c` through `tools/golden.sh`), `patchstore.c` keeps the patch in two A/B flash sectors (0x97000, 0x98000) and the firmware boots the stored patch, else factory patch 0. A failed commit leaves the previous patch running; STORE saves the live-edited parameters too. `web/src/device.ts` is the browser side (toolbar: Connect FM-1, Live, Send patch, Store on FM-1); `tools/m1_link.py` does the same from a terminal.
+
+Not done yet: the FM-1's own knobs and buttons (the keys play), a patch name on the device, reading a patch back.
 
 ## Open questions
 

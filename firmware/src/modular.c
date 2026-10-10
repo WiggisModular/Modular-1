@@ -8,7 +8,7 @@
 #define FELUCCA_ID "FM-1_800"    /* package identity (build.py: the .fwsc marker string) */
 #endif
 #ifndef FELUCCA_VERSION
-#define FELUCCA_VERSION "M1-0.2"
+#define FELUCCA_VERSION "M1-0.3"
 #endif
 #define FELUCCA_FLASH 1
 #define FELUCCA_OTA 1
@@ -46,6 +46,12 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 #include "storage_hw.c"
 #include "ota.c"
 #include "ota_hw.c"
+static int m1_apply(const uint8_t *patch, uint32_t len);       /* main.c: the hooks proto.c needs */
+static int m1_store(const uint8_t *patch, uint32_t len);
+static int m1_flash_ok(void);
+static void m1_send(const uint8_t *f, uint32_t n);
+#include "proto.c"
+#include "patchstore.c"
 #ifdef M1_BENCH
 #include "bench.c"
 #endif

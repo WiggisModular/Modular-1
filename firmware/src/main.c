@@ -60,6 +60,7 @@ static void fm1_fault(const fm1_crash_t *c)
 
 static uint32_t cur_preset;
 static int load_err;
+static const char *patch_label = "";
 
 static void status_draw(void)                   /* the patch name and the engine's CPU load, a few times a second */
 {
@@ -98,25 +99,61 @@ static void screen_idle(void)
         fmt_int(p, load_err);
         text5x7(12, 120, b, 2, 0xF800u, C_BG);
     } else {
-        text5x7(12, 120, PRESET_LIST[cur_preset].name, 2, C_FG, C_BG);
+        text5x7(12, 120, patch_label, 2, C_FG, C_BG);
     }
     text5x7(12, 190, "KEYS + MIDI. PROGRAM CHANGE: PATCH", 1, C_FG, C_BG);
     status_draw();
 }
 
-static void preset_load(uint32_t n)
+/* proto.c hooks */
+static int m1_flash_ok(void) { return flash_ok; }
+static void m1_send(const uint8_t *f, uint32_t n) { (void)ota_wire_send(f, n); }
+static int m1_apply(const uint8_t *patch, uint32_t len)
 {
     int rc;
-    if (n >= N_PRESETS)
-        return;
-    eng_run = 0;
-    eng_all_notes_off();
-    rc = eng_load(PRESET_LIST[n].data, PRESET_LIST[n].len);
+    eng_run = 0;                                /* the ISR renders silence while the patch is replaced */
+    rc = eng_load(patch, len);
     load_err = -rc;
-    cur_preset = n;
     eng_us_max = 0;
     eng_run = rc == 0;
+    patch_label = "FROM EDITOR";
     screen_idle();
+    return rc;
+}
+static int m1_store(const uint8_t *patch, uint32_t len)
+{
+    if (!flash_ok)
+        return -1;
+    eng_run = 0;                                /* a sector erase takes the CPU for a while: no audio meanwhile */
+    {
+        int rc = ps_save(patch, len);
+        eng_run = load_err == 0;
+        return rc;
+    }
+}
+
+static void preset_load(uint32_t n)
+{
+    if (n >= N_PRESETS)
+        return;
+    if (m1_apply(PRESET_LIST[n].data, PRESET_LIST[n].len) == 0)
+        m1_set_current(PRESET_LIST[n].data, PRESET_LIST[n].len);
+    cur_preset = n;
+    patch_label = PRESET_LIST[n].name;
+    screen_idle();
+}
+
+static void patch_boot(void)                    /* the stored patch if there is one, else the first factory patch */
+{
+    static uint8_t buf[M1_PATCH_MAX];
+    uint32_t len, seq, sector;
+    if (flash_ok && ps_load(buf, &len, &seq, &sector) == 0 && m1_apply(buf, len) == 0) {
+        m1_set_current(buf, len);
+        patch_label = "STORED PATCH";
+        screen_idle();
+        return;
+    }
+    preset_load(0);
 }
 
 static void midi_drain(void)                    /* USB-MIDI events -> the engine */
@@ -197,7 +234,7 @@ static void fm1_main(void)
     fm1_guard_lock_top();
     fm1_irq_enable_all();
     fm1_delay_ms(30);
-    preset_load(0);
+    patch_boot();
     for (;;) {
         fm1_wdt_feed();
         usb_retry(fm1_ms);
@@ -229,13 +266,22 @@ static void fm1_main(void)
                 fm1_enter_uboot();
             }
         }
+        {   /* the editor's SysEx (proto.c) before the update protocol's */
+            const uint8_t *fp;
+            uint32_t fn;
+            if (ota_frame_get(&fp, &fn) && m1_handle(fp, fn))
+                ota_frame_done();
+        }
         ota_service();                                  /* M-UPGRADE handshake */
         if (usb.ota_req) {                              /* M-UPGRADE upgrade command */
             usb.ota_req = 0;
             eng_run = 0;
             if (flash_ok)
                 ota_session();                          /* returns only if nothing was committed */
-            preset_load(cur_preset);
+            if (m1_apply(m1_cur, m1_cur_len) == 0)
+                m1_set_current(m1_cur, m1_cur_len);
+            else
+                preset_load(cur_preset);
         }
         if (usb.uboot_req) {                            /* SysEx F0 22 24 35 7D F7 from the host */
             fm1_audio_stop();
