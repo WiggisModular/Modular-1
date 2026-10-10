@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Modular-1</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Ccircle cx=%278%27 cy=%278%27 r=%276%27 fill=%27none%27 stroke=%27%23c2410c%27 stroke-width=%272.5%27/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <header class="top">
+    <h1>Modular-1</h1>
+    <nav id="tabs" role="tablist">
+      <button role="tab" data-tab="patch" aria-selected="true">Patch</button>
+      <button role="tab" data-tab="flash" aria-selected="false">Flash</button>
+      <button role="tab" data-tab="about" aria-selected="false">About</button>
+    </nav>
+    <div class="spacer"></div>
+    <span id="audio-status" class="muted">audio off</span>
+    <button id="audio-btn" class="primary">Start audio</button>
+  </header>
+  <main>
+    <section id="tab-patch" class="tab">
+      <div class="toolbar">
+        <select id="preset" aria-label="Preset"></select>
+        <input id="patch-name" aria-label="Patch name" />
+        <select id="add-type" aria-label="Module type"></select>
+        <button id="add-btn">Add module</button>
+        <span class="spacer"></span>
+        <button id="save-btn">Save .json</button>
+        <label class="btn">Load .json<input id="load-file" type="file" accept="application/json,.json" hidden /></label>
+        <button id="panic-btn">Panic</button>
+      </div>
+      <div id="canvas" class="canvas"><svg id="cables" class="cables"></svg><div id="modules"></div></div>
+      <p class="muted hint">Play with the computer keyboard (A W S E D F T G Y H U J K, Z / X = octave) or a MIDI keyboard. Drag from a port to a port to patch; click a cable to remove it.</p>
+    </section>
+    <section id="tab-flash" class="tab" hidden></section>
+    <section id="tab-about" class="tab" hidden></section>
+  </main>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
