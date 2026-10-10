@@ -8,12 +8,22 @@
 #define ENG_SR 44100u
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
+#define ENG_PATCH_VERSION 3
 
 /* Install a patch from its binary form (web/src/patchbin.ts). 0 on success, negative on error (the engine is then
  * silent). Resets all module state. Never call while eng_render runs (stop the audio ISR's call first). */
 int eng_load(const uint8_t *p, uint32_t len);
 void eng_set_param(uint32_t module, uint32_t param, int32_t q16);
 int32_t eng_get_param(uint32_t module, uint32_t param);
+void eng_set_att(uint32_t module, uint32_t input, int32_t q16);      /* attenuverter of p1 / p2, Q16 */
+int32_t eng_att(uint32_t module, uint32_t input);
+int eng_nmodules(void);
+int eng_type(uint32_t module);                                       /* defs.h T_*, -1 if no such module */
+/* the matrix: bit mask of the parameters source s (0 p1, 1 p2, 2..5 knobs k1..k4) controls; 0 on modules without a matrix */
+uint32_t eng_map(uint32_t module, uint32_t source);
+/* the parameters knob k (0..3) changes while the module is selected: its matrix column, and on the modules without a
+ * matrix (fm1, output) the k-th parameter */
+uint32_t eng_knob_mask(uint32_t module, uint32_t knob);
 /* index of the first module of a type (defs.h T_*), -1 if the patch has none */
 int eng_find(uint32_t type);
 void eng_note_on(uint32_t note, int32_t vel_q16);

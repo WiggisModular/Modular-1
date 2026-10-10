@@ -10,10 +10,10 @@
 #include "engine.h"
 #include "defs.h"
 
-#define M1_PATCH_MAX 2048u
+#define M1_PATCH_MAX 3072u
 #define M1_VERSION 1
 
-enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, R_ACK = 0x40, R_INFO = 0x41 };
+enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, R_ACK = 0x40, R_INFO = 0x41 };
 enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE };
 
 static uint8_t m1_up[M1_PATCH_MAX], m1_cur[M1_PATCH_MAX];
@@ -99,24 +99,45 @@ static void m1_set_current(const uint8_t *p, uint32_t len)
     m1_cur_len = len;
 }
 
-/* the stored copy follows live edits: write the value into the binary patch */
-static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
+/* byte offset of module `mod`'s record in the patch binary, 0 if the binary is malformed */
+static uint32_t m1_record(uint32_t mod)
 {
     uint32_t at = 8, i;
     if (m1_cur_len < 8u || mod >= m1_cur[2])
-        return;
+        return 0;
     for (i = 0; i < mod; i++) {
+        const def_t *d;
         if (at >= m1_cur_len || m1_cur[at] >= N_TYPES)
-            return;
-        at += 1u + 4u * DEFS[m1_cur[at]].npar;
+            return 0;
+        d = &DEFS[m1_cur[at]];
+        at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 14u : 0u);
     }
-    if (at >= m1_cur_len || m1_cur[at] >= N_TYPES || par >= DEFS[m1_cur[at]].npar || at + 1u + 4u * (par + 1u) > m1_cur_len)
-        return;
-    at += 1u + 4u * par;
+    return at < m1_cur_len && m1_cur[at] < N_TYPES ? at : 0;
+}
+
+static void m1_put32(uint32_t at, int32_t v)
+{
     m1_cur[at] = (uint8_t)v;
     m1_cur[at + 1] = (uint8_t)((uint32_t)v >> 8);
     m1_cur[at + 2] = (uint8_t)((uint32_t)v >> 16);
     m1_cur[at + 3] = (uint8_t)((uint32_t)v >> 24);
+}
+
+/* the stored copy follows live edits: write the value into the binary patch */
+static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
+{
+    uint32_t at = m1_record(mod);
+    if (!at || par >= DEFS[m1_cur[at]].npar)
+        return;
+    m1_put32(at + 1u + 4u * par, v);
+}
+
+static void m1_patch_att(uint32_t mod, uint32_t input, int32_t v)
+{
+    uint32_t at = m1_record(mod);
+    if (!at || input >= 2u || DEFS[m1_cur[at]].cvbase < 0)
+        return;
+    m1_put32(at + 1u + 4u * DEFS[m1_cur[at]].npar + 4u * input, v);
 }
 
 /* f: the bytes between F0 and F7. Returns 1 if the frame was ours (and is consumed). */
@@ -209,6 +230,13 @@ static int m1_handle(const uint8_t *f, uint32_t n)
             int32_t v = (int32_t)((uint32_t)d[2] | (uint32_t)d[3] << 8 | (uint32_t)d[4] << 16 | (uint32_t)d[5] << 24);
             eng_set_param(d[0], d[1], v);
             m1_patch_param(d[0], d[1], v);
+        }
+        break;
+    case C_ATT:
+        if (len >= 6u) {
+            int32_t v = (int32_t)((uint32_t)d[2] | (uint32_t)d[3] << 8 | (uint32_t)d[4] << 16 | (uint32_t)d[5] << 24);
+            eng_set_att(d[0], d[1], v);
+            m1_patch_att(d[0], d[1], v);
         }
         break;
     default:

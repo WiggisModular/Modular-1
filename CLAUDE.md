@@ -47,6 +47,14 @@ Benchmark (`firmware/src/bench.c`, numbers in docs/ARCHITECTURE.md): no FPU, flo
 - SysEx protocol in `web/src/protocol.ts` (documented there) <-> `firmware/src/proto.c`; hooks and flash store in `main.c` / `patchstore.c`; browser side `web/src/device.ts` + toolbar in `index.html`/`main.ts`; terminal tool `tools/m1_link.py` (`info`, `upload build/golden/303-acid.m1p`, `param`, `store`, `note`).
 - First thing to do after flashing M1-0.3: `nix develop -c python3 tools/m1_link.py info`, then upload, param, store, power-cycle (the stored patch must come back: label `STORED PATCH`). Flash writes by the app (sectors 0x97000/0x98000) have never run on the device.
 
+## Parameter inputs + matrix + module select (M1-0.6, host-tested; device UI not yet seen)
+
+- Replaces the per-parameter `<param>_cv` inputs: two inputs `p1`, `p2` per module (not fm1/output) with attenuverters `att` (-1..1) and a matrix `map` (sources p1 p2 k1..k4 -> parameters). Model in `web/src/patch.ts` (`fixMatrix`, `defaultMap`, version 2, v1 migration), semantics in `engine.ts applyCv` and `engine.c apply_cv`, binary patch format 2 (`web/src/patchbin.ts`: +8 byte attenuverters +6 byte masks per module that has inputs), protocol cmd 0x21 ATT.
+- Device: SELECT (encoder 0) steps through the modules, K1..K4 change the parameters of the selected module per its matrix column (fm1 module: k1..k4 as before). LCD shows module name, the four knob rows and the P1/P2 attenuverters + assignments. Patch size limit 3072 B. Old stored patches (format 1) are refused at boot -> factory patch 0.
+- Found and fixed with the golden test: the filter had a DC offset at low cutoff (truncation bias in Q16 states); states are now Q20 and products rounded.
+- M1-0.7: the `midi` module is gone. Keys and USB MIDI feed the one voice, which only the `fm1` (FM-1 panel) module outputs (pitch/gate/vel + k1..k4); old patches with `midi` load as `fm1`. Binary patch format is now 3 (type indices moved). A patch needs an FM-1 panel module to be playable.
+- Factory patch "FM-1 Panel synth" uses p1/p2 of filter and delay with explicit matrices.
+
 ## Not verified — do not claim otherwise
 
 - The flash tab and installer have never run against a real FM-1 in this project.

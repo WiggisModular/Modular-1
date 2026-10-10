@@ -3,7 +3,7 @@
 import { DEFS } from './modules';
 import type { Patch } from './patch';
 import { encodePatch, toQ16 } from './patchbin';
-import { chunkFrames, CMD, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+import { attFrame, chunkFrames, CMD, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 
 const NAME = /felucca|fm-?1|modular/i;
 const ACK_TIMEOUT = 700;
@@ -118,6 +118,13 @@ export class DeviceLink {
         this.paramQueue.clear();
         for (const [m, p, v] of q) this.out?.send(paramFrame(m, p, v));
       }, 25);
+  }
+
+  /** a live attenuverter change (input 0 = p1, 1 = p2) */
+  att(patch: Patch, moduleId: number, index: number, value: number): void {
+    if (!this.connected) return;
+    const mi = patch.modules.findIndex((m) => m.id === moduleId);
+    if (mi >= 0) this.out!.send(attFrame(mi, index, toQ16(value)));
   }
 
   note(msg: { t: string; note?: number; vel?: number }): void {

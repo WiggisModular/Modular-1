@@ -28,6 +28,8 @@ typedef int32_t sig_t;
 
 static inline int32_t mulq(int32_t a, int32_t b, unsigned s) { return (int32_t)(((int64_t)a * b) >> s); }
 static inline int32_t mul16(int32_t a, int32_t b) { return mulq(a, b, 16); }
+/* rounded to nearest: no bias, which the filter's integrators would turn into a DC offset at low cutoffs */
+static inline int32_t mulr(int32_t a, int32_t b, unsigned s) { return (int32_t)(((int64_t)a * b + ((int64_t)1 << (s - 1))) >> s); }
 static inline int32_t clampi(int32_t v, int32_t lo, int32_t hi) { return v < lo ? lo : v > hi ? hi : v; }
 
 /* ------------------------------------------------------------------ number helpers */
@@ -107,6 +109,8 @@ static int32_t wave(int32_t kind, uint32_t ph, uint32_t dt, uint32_t pw)
 
 typedef struct {
     uint8_t type, conn, sum0, nsum;
+    uint8_t map[6];                  /* the matrix: bit j of map[s] = source s controls parameter j. s: p1 p2 k1 k2 k3 k4 */
+    int32_t att[2];                  /* attenuverters of p1, p2: Q16, -1..1 */
     int32_t par[MAX_PAR], eff[MAX_PAR];
     const sig_t *in[MAX_IN];
     sig_t *out[MAX_OUT];
@@ -185,6 +189,14 @@ static void init_state(node_t *nd)
     }
 }
 
+static inline int32_t rd32(const uint8_t *p)
+{
+    return (int32_t)((uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24);
+}
+
+/* bytes a module record has beyond its type byte and parameters: the attenuverters and the matrix */
+static inline uint32_t eng_record_extra(const def_t *d) { return d->cvbase >= 0 ? 14u : 0u; }
+
 int eng_load(const uint8_t *p, uint32_t len)
 {
     uint32_t i, j, c, at = 8, ncab;
@@ -192,7 +204,7 @@ int eng_load(const uint8_t *p, uint32_t len)
     E.loaded = 0;
     E.nheld = 0;
     E.voice.pitch = E.voice.gate = E.voice.vel = 0;
-    if (len < 8u || p[0] != 0xA1 || p[1] != 1)
+    if (len < 8u || p[0] != 0xA1 || p[1] != ENG_PATCH_VERSION)
         return -1;
     E.nmod = p[2];
     ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8;
@@ -211,10 +223,17 @@ int eng_load(const uint8_t *p, uint32_t len)
             return -3;
         nd->type = p[at++];
         d = &DEFS[nd->type];
-        if (at + 4u * d->npar > len)
+        if (at + eng_record_extra(d) + 4u * d->npar > len)
             return -3;
         for (j = 0; j < d->npar; j++, at += 4)
-            nd->par[j] = (int32_t)((uint32_t)p[at] | (uint32_t)p[at + 1] << 8 | (uint32_t)p[at + 2] << 16 | (uint32_t)p[at + 3] << 24);
+            nd->par[j] = rd32(p + at);
+        if (d->cvbase >= 0) {
+            nd->att[0] = rd32(p + at);
+            nd->att[1] = rd32(p + at + 4);
+            at += 8;
+            for (j = 0; j < 6u; j++)
+                nd->map[j] = p[at++];
+        }
         init_state(nd);
         if (nd->type == T_DELAY) {
             if (E.ndly >= ENG_NDELAY)
@@ -295,6 +314,36 @@ int eng_load(const uint8_t *p, uint32_t len)
     return 0;
 }
 
+void eng_set_att(uint32_t module, uint32_t input, int32_t q16)
+{
+    if (module < E.nmod && input < 2u)
+        E.node[module].att[input] = q16;
+}
+
+/* what turning knob k (0..3) changes on a module: the matrix column of k1..k4, and on the modules that have no matrix
+ * (fm1, output) the n-th parameter */
+uint32_t eng_knob_mask(uint32_t module, uint32_t knob)
+{
+    const def_t *d;
+    if (module >= E.nmod || knob >= 4u)
+        return 0;
+    d = &DEFS[E.node[module].type];
+    if (d->cvbase >= 0)
+        return E.node[module].map[2u + knob];
+    return knob < d->npar ? 1u << knob : 0u;
+}
+
+int eng_nmodules(void) { return E.loaded ? E.nmod : 0; }
+int eng_type(uint32_t module) { return module < E.nmod ? E.node[module].type : -1; }
+uint32_t eng_map(uint32_t module, uint32_t source)
+{
+    return module < E.nmod && source < 6u && DEFS[E.node[module].type].cvbase >= 0 ? E.node[module].map[source] : 0u;
+}
+int32_t eng_att(uint32_t module, uint32_t input)
+{
+    return module < E.nmod && input < 2u ? E.node[module].att[input] : 0;
+}
+
 void eng_set_param(uint32_t module, uint32_t param, int32_t q16)
 {
     if (module < E.nmod && param < DEFS[E.node[module].type].npar)
@@ -371,13 +420,6 @@ static void fill(sig_t *o, int32_t v, uint32_t n)
     uint32_t i;
     for (i = 0; i < n; i++)
         o[i] = v;
-}
-
-static void m_midi(node_t *nd, uint32_t n)
-{
-    fill(nd->out[MIDI_O_PITCH], E.voice.pitch, n);
-    fill(nd->out[MIDI_O_GATE], E.voice.gate, n);
-    fill(nd->out[MIDI_O_VEL], E.voice.vel, n);
 }
 
 static void m_fm1(node_t *nd, uint32_t n)
@@ -565,6 +607,7 @@ static void svf_coef(svf_coef_t *c, uint32_t rinc, int32_t k24)
     c->a3 = mulq(g, c->a2, 24);
 }
 
+/* The integrator states ic1, ic2 are Q20 (+-2048: room for the resonance peak), the signals Q16; products are rounded. */
 static void m_filter(node_t *nd, uint32_t n)
 {
     const sig_t *in = nd->in[FILTER_I_IN], *cv = nd->in[FILTER_I_CV];
@@ -577,17 +620,17 @@ static void m_filter(node_t *nd, uint32_t n)
     if (fixed)
         svf_coef(&c, base, k24);
     for (i = 0; i < n; i++) {
-        int32_t v0 = in[i], v3, v1, v2;
+        int32_t v0 = in[i] << 4, v3, v1, v2;                               /* Q20 */
         if (!fixed)
             svf_coef(&c, exp2_scale(base, mul16(cv[i], cvamt)), k24);
         v3 = v0 - ic2;
-        v1 = mulq(c.a1, ic1, 24) + mulq(c.a2, v3, 24);
-        v2 = ic2 + mulq(c.a2, ic1, 24) + mulq(c.a3, v3, 24);
-        ic1 = 2 * v1 - ic1;
-        ic2 = 2 * v2 - ic2;
-        lp[i] = v2;
-        bp[i] = v1;
-        hp[i] = v0 - mulq(v1, k24, 24) - v2;
+        v1 = mulr(c.a1, ic1, 24) + mulr(c.a2, v3, 24);
+        v2 = ic2 + mulr(c.a2, ic1, 24) + mulr(c.a3, v3, 24);
+        ic1 = clampi(2 * v1 - ic1, -(1 << 30), 1 << 30);
+        ic2 = clampi(2 * v2 - ic2, -(1 << 30), 1 << 30);
+        lp[i] = (v2 + 8) >> 4;
+        bp[i] = (v1 + 8) >> 4;
+        hp[i] = (v0 - mulr(v1, k24, 24) - v2 + 8) >> 4;
     }
     nd->s.flt.ic1 = ic1;
     nd->s.flt.ic2 = ic2;
@@ -632,28 +675,40 @@ static void m_delay(node_t *nd, uint32_t n)
 
 /* ------------------------------------------------------------------ rendering */
 
-/* block-rate parameter modulation: effective = base + mean(cv) * (max - min), clamped (modules.ts / engine.ts applyCv) */
+/* Block-rate parameter modulation (engine.ts applyCv): the mean of p1 / p2 over the block, times the attenuverter, is
+ * added (times the range) to the parameters the matrix assigns that input to; clamped when something was added. */
 static void apply_cv(node_t *nd, uint32_t n)
 {
     const def_t *d = &DEFS[nd->type];
-    uint32_t j, i;
-    for (j = 0; j < d->npar; j++) {
-        int32_t v = nd->par[j];
-        if (d->cvbase >= 0 && (nd->conn & (1u << (d->cvbase + j)))) {
-            const sig_t *cv = nd->in[d->cvbase + j];
+    int32_t mean[2] = {0, 0};
+    uint32_t j, i, s, have = 0;
+    if (d->cvbase >= 0)
+        for (s = 0; s < 2u; s++) {
+            const sig_t *cv;
             int64_t sum = 0;
+            if (!(nd->conn & (1u << (d->cvbase + s))))
+                continue;
+            cv = nd->in[d->cvbase + s];
             for (i = 0; i < n; i++)
                 sum += cv[i];
-            v = clampi(v + mul16((int32_t)(sum / (int64_t)n), d->pmax[j] - d->pmin[j]), d->pmin[j], d->pmax[j]);
+            mean[s] = mul16((int32_t)(sum / (int64_t)n), nd->att[s]);
+            have |= 1u << s;
         }
-        nd->eff[j] = v;
+    for (j = 0; j < d->npar; j++) {
+        int32_t v = nd->par[j];
+        uint32_t touched = 0;
+        for (s = 0; s < 2u; s++)
+            if ((have >> s & 1u) && (nd->map[s] >> j & 1u)) {
+                v += mul16(mean[s], d->pmax[j] - d->pmin[j]);
+                touched = 1;
+            }
+        nd->eff[j] = touched ? clampi(v, d->pmin[j], d->pmax[j]) : v;
     }
 }
 
 static void process(node_t *nd, uint32_t n)
 {
     switch (nd->type) {
-    case T_MIDI: m_midi(nd, n); break;
     case T_FM1: m_fm1(nd, n); break;
     case T_OSC: m_osc(nd, n); break;
     case T_LFO: m_lfo(nd, n); break;

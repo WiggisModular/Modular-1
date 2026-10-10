@@ -3,6 +3,8 @@
 import { DEFS } from './modules';
 import {
   addModule,
+  SOURCES,
+  type Source,
   connect,
   disconnect,
   removeModule,
@@ -22,6 +24,8 @@ export interface EditorEvents {
   onStructure(p: Patch): void;
   /** a knob moved: cheap update */
   onParam(id: number, name: string, value: number): void;
+  /** an attenuverter of a parameter input moved (index 0 = p1, 1 = p2) */
+  onAtt(id: number, index: number, value: number): void;
   onError(msg: string): void;
 }
 
@@ -49,7 +53,7 @@ export class Editor {
   add(type: string): void {
     try {
       const n = this.patch.modules.length;
-      addModule(this.patch, DEFS[type], 20 + (n % 4) * 210, 20 + Math.floor(n / 4) * 430);
+      addModule(this.patch, DEFS[type], 20 + (n % 4) * 270, 20 + Math.floor(n / 4) * 560);
     } catch (e) {
       return this.ev.onError(String((e as Error).message ?? e));
     }
@@ -70,8 +74,8 @@ export class Editor {
   }
 
   private sizeCanvas(): void {
-    const w = Math.max(900, ...this.patch.modules.map((m) => m.x + 220));
-    const h = Math.max(520, ...this.patch.modules.map((m) => m.y + 420));
+    const w = Math.max(900, ...this.patch.modules.map((m) => m.x + 270));
+    const h = Math.max(520, ...this.patch.modules.map((m) => m.y + 560));
     this.canvas.style.minWidth = `${w}px`;
     this.canvas.style.minHeight = `${h}px`;
   }
@@ -104,7 +108,7 @@ export class Editor {
     body.className = 'mbody';
     const ins = document.createElement('div');
     ins.className = 'ports in';
-    for (const p of def.inputs) if (!p.param) ins.append(this.port(m, p, 'in'));
+    for (const p of def.inputs) if (!p.pin) ins.append(this.port(m, p, 'in'));
     const outs = document.createElement('div');
     outs.className = 'ports out';
     for (const p of def.outputs) outs.append(this.port(m, p, 'out'));
@@ -135,20 +139,81 @@ export class Editor {
         val.textContent = fmt(v);
         this.ev.onParam(m.id, pd.name, v);
       };
-      const cv = def.inputs.find((p) => p.param === pd.name);
-      if (cv) {
-        const jack = this.port(m, cv, 'in');
-        jack.classList.add('cvjack');
-        jack.querySelector('span:not(.dot)')?.remove();
-        jack.title = `${pd.name} CV`;
-        row.append(jack);
-      }
       row.append(name, val, input);
       params.append(row);
     }
-    body.append(io, params);
+    body.append(io);
+    if (def.paramInputs) body.append(this.pins(m, def), this.matrix(m, def));
+    body.append(params);
     el.append(head, body);
     return el;
+  }
+
+  /** the two parameter inputs, each with an attenuverter (-1..1: scale and invert) */
+  private pins(m: ModuleInst, def: ModuleDef): HTMLElement {
+    const box = document.createElement('div');
+    box.className = 'pins';
+    def.inputs
+      .filter((p) => p.pin)
+      .forEach((p, i) => {
+        const row = document.createElement('div');
+        row.className = 'pin';
+        const jack = this.port(m, p, 'in');
+        const val = document.createElement('output');
+        const att = m.att ?? [1, 1];
+        val.textContent = att[i].toFixed(2);
+        const input = document.createElement('input');
+        input.type = 'range';
+        input.min = '-1';
+        input.max = '1';
+        input.step = '0.01';
+        input.value = String(att[i]);
+        input.title = `${p.name} attenuverter: -1 inverts, 0 mutes`;
+        input.setAttribute('aria-label', `${def.label} ${p.name} attenuverter`);
+        input.oninput = () => {
+          const v = Number(input.value);
+          m.att![i] = v;
+          val.textContent = v.toFixed(2);
+          this.ev.onAtt(m.id, i, v);
+        };
+        row.append(jack, input, val);
+        box.append(row);
+      });
+    return box;
+  }
+
+  /** which parameter each source controls: columns p1 p2 and the knobs k1..k4, one row per parameter */
+  private matrix(m: ModuleInst, def: ModuleDef): HTMLElement {
+    const t = document.createElement('table');
+    t.className = 'matrix';
+    t.title = 'p1 / p2: the parameter inputs. k1..k4: the FM-1 knobs, which change these parameters while the module is selected on the device.';
+    const head = t.createTHead().insertRow();
+    head.insertCell();
+    for (const s of SOURCES) {
+      const th = document.createElement('th');
+      th.textContent = s;
+      head.append(th);
+    }
+    const body = t.createTBody();
+    for (const pd of def.params) {
+      const row = body.insertRow();
+      const name = row.insertCell();
+      name.textContent = pd.name;
+      for (const s of SOURCES as Source[]) {
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.checked = m.map![s].includes(pd.name);
+        box.setAttribute('aria-label', `${def.label}: ${s} controls ${pd.name}`);
+        box.onchange = () => {
+          const list = m.map![s].filter((n) => n !== pd.name);
+          if (box.checked) list.push(pd.name);
+          m.map![s] = list;
+          this.ev.onStructure(this.patch);
+        };
+        row.insertCell().append(box);
+      }
+    }
+    return t;
   }
 
   private port(m: ModuleInst, p: PortDef, dir: 'out' | 'in'): HTMLElement {

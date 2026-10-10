@@ -6,7 +6,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { Engine } from '../src/engine';
 import { encodePatch, toQ16 } from '../src/patchbin';
 import { DEFS } from '../src/modules';
-import { chunkFrames, commitFrame, paramFrame } from '../src/protocol';
+import { attFrame, chunkFrames, commitFrame, paramFrame } from '../src/protocol';
 import { make, PRESETS, type Build } from '../src/presets';
 import type { Patch } from '../src/patch';
 
@@ -29,7 +29,7 @@ const kit = (name: string, b: Build): void => {
   tests[name] = make(name, b);
 };
 kit('waves', (add, wire) => {
-  const kb = add('midi', 0, 0);
+  const kb = add('fm1', 0, 0);
   const mix = add('mixer', 0, 0, { l1: 0.25, l2: 0.25, l3: 0.25, l4: 0.25 });
   const out = add('output', 0, 0);
   [0, 1, 2, 3].forEach((w, i) => {
@@ -40,16 +40,16 @@ kit('waves', (add, wire) => {
   wire(mix, 'out', out, 'l');
 });
 kit('lfo-sh', (add, wire) => {
-  const kb = add('midi', 0, 0);
+  const kb = add('fm1', 0, 0);
   const sh = add('lfo', 0, 0, { wave: 4, rate: 9, depth: 0.8 });
   const tri = add('lfo', 0, 0, { wave: 1, rate: 2.5, depth: 0.6 });
-  const osc = add('osc', 0, 0, { wave: 3, pw: 0.5, level: 0.8 });
+  const osc = add('osc', 0, 0, { wave: 3, pw: 0.5, level: 0.8 }, { map: { p1: ['level'], p2: ['pw'] } });
   const sc = add('scale', 0, 0, { gain: 0.5, offset: 0.1 });
   const out = add('output', 0, 0);
   wire(kb, 'pitch', osc, 'pitch');
-  wire(sh, 'out', osc, 'pw_cv');
+  wire(sh, 'out', osc, 'p2');
   wire(tri, 'out', sc, 'in');
-  wire(sc, 'out', osc, 'level_cv');
+  wire(sc, 'out', osc, 'p1');
   wire(osc, 'out', out, 'l');
 });
 kit('noise-svf', (add, wire) => {
@@ -65,15 +65,15 @@ kit('noise-svf', (add, wire) => {
 });
 kit('fm1-panel', (add, wire) => {
   const pn = add('fm1', 0, 0, { k1: 0.2, k3: 0.4 });
-  const osc = add('osc', 0, 0, { wave: 2 });
+  const osc = add('osc', 0, 0, { wave: 2 }, { map: { p1: ['level'], p2: ['fine'] } });
   const out = add('output', 0, 0);
   wire(pn, 'pitch', osc, 'pitch');
-  wire(pn, 'k3', osc, 'level_cv');
-  wire(pn, 'k1', osc, 'fine_cv');
+  wire(pn, 'k3', osc, 'p1');
+  wire(pn, 'k1', osc, 'p2');
   wire(osc, 'out', out, 'l');
 });
 kit('delay-fb', (add, wire) => {
-  const kb = add('midi', 0, 0);
+  const kb = add('fm1', 0, 0);
   const osc = add('osc', 0, 0, { wave: 1, level: 0.5 });
   const env = add('adsr', 0, 0, { a: 0.002, d: 0.05, s: 0, r: 0.05 });
   const vca = add('vca', 0, 0);
@@ -88,7 +88,7 @@ kit('delay-fb', (add, wire) => {
   wire(dly, 'out', out, 'r');
 });
 kit('feedback-pm', (add, wire) => {
-  const kb = add('midi', 0, 0);
+  const kb = add('fm1', 0, 0);
   const osc = add('osc', 0, 0, { wave: 0, pm: 2 });
   const vca = add('vca', 0, 0, { gain: 0.7 });
   const env = add('adsr', 0, 0, { a: 0.01, d: 0.2, s: 0.6, r: 0.2 });
@@ -101,7 +101,7 @@ kit('feedback-pm', (add, wire) => {
   wire(vca, 'out', out, 'l');
 });
 kit('summed-inputs', (add, wire) => {
-  const kb = add('midi', 0, 0);
+  const kb = add('fm1', 0, 0);
   const a = add('osc', 0, 0, { wave: 2, coarse: -12, level: 0.4 });
   const b = add('osc', 0, 0, { wave: 3, coarse: 7, level: 0.4 });
   const k = add('const', 0, 0, { value: 0.25 });
@@ -113,6 +113,22 @@ kit('summed-inputs', (add, wire) => {
   wire(b, 'out', vca, 'in');
   wire(k, 'out', vca, 'cv');
   wire(vca, 'out', out, 'l');
+});
+
+kit('matrix-att', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const lfo = add('lfo', 0, 0, { wave: 0, rate: 3, depth: 1 });
+  const k = add('const', 0, 0, { value: 0.5 });
+  const osc = add('osc', 0, 0, { wave: 0, level: 0.6 }, { map: { p1: ['level'], p2: ['level'] }, att: [-0.5, 0.3] });
+  const flt = add('filter', 0, 0, { cutoff: 800, res: 0.3 }, { map: { p1: ['cutoff', 'res'], p2: ['cvamt'] }, att: [0.3, -1] });
+  const out = add('output', 0, 0);
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(lfo, 'out', osc, 'p1');
+  wire(k, 'out', osc, 'p2');
+  wire(lfo, 'out', flt, 'p1');
+  wire(k, 'out', flt, 'p2');
+  wire(osc, 'out', flt, 'in');
+  wire(flt, 'lp', out, 'l');
 });
 
 const slug = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
@@ -155,8 +171,9 @@ for (const [name, patch] of Object.entries(tests)) {
   const mod = p.modules.findIndex((m) => m.type === 'filter');
   const par = DEFS.filter.params.findIndex((x) => x.name === 'cutoff');
   const val = toQ16(900);
-  const frames = [...chunkFrames(bin, 50), commitFrame(bin), paramFrame(mod, par, val)];
+  const attVal = toQ16(-0.5);
+  const frames = [...chunkFrames(bin, 50), commitFrame(bin), paramFrame(mod, par, val), attFrame(mod, 0, attVal)];
   writeFileSync(new URL('proto.syx', OUT), Buffer.concat(frames));
-  writeFileSync(new URL('proto.args', OUT), `${mod} ${par} ${val}\n`);
+  writeFileSync(new URL('proto.args', OUT), `${mod} ${par} ${val} ${mod} 0 ${attVal}\n`);
 }
 console.log(`golden vectors for ${Object.keys(tests).length} patches in build/golden/`);

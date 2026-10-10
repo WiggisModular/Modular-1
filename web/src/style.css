@@ -34,7 +34,7 @@ main { padding: 12px 16px 32px; }
 .cable.audio { stroke: var(--audio); } .cable.control { stroke: var(--control); } .cable.gate { stroke: var(--gate); }
 .cable.pending { stroke: var(--muted); stroke-dasharray: 5 4; pointer-events: none; }
 .cable:hover { stroke-width: 5; }
-.module { position: absolute; width: 190px; background: var(--panel); border: 1px solid var(--muted); border-radius: 8px; box-shadow: 0 1px 4px #0002; user-select: none; }
+.module { position: absolute; width: 236px; background: var(--panel); border: 1px solid var(--muted); border-radius: 8px; box-shadow: 0 1px 4px #0002; user-select: none; }
 .mhead { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-bottom: 1px solid var(--line); font-weight: 600; cursor: grab; touch-action: none; }
 .x { padding: 0 6px; line-height: 1.2; border: none; background: transparent; color: var(--muted); font-size: 16px; }
 .io { display: flex; justify-content: space-between; padding: 6px 0; }
@@ -47,7 +47,15 @@ main { padding: 12px 16px 32px; }
 .dot:hover { background: currentColor; }
 .params { padding: 4px 8px 8px; display: grid; gap: 4px; border-top: 1px solid var(--line); }
 .param { display: grid; grid-template-columns: auto 1fr auto; align-items: center; column-gap: 6px; font-size: 12px; }
-.param .cvjack { gap: 0; }
+.pins { padding: 2px 8px 6px; display: grid; gap: 2px; border-top: 1px solid var(--line); }
+.pin { display: grid; grid-template-columns: 52px 1fr 38px; align-items: center; column-gap: 6px; font-size: 12px; }
+.pin input { width: 100%; accent-color: var(--accent); }
+.pin output { color: var(--muted); text-align: right; }
+.matrix { margin: 0 8px 6px; border-collapse: collapse; font-size: 11px; width: calc(100% - 16px); }
+.matrix th { color: var(--muted); font-weight: 500; padding: 1px 0; }
+.matrix td { text-align: center; padding: 0; height: 18px; }
+.matrix td:first-child { text-align: left; color: var(--muted); padding-right: 4px; }
+.matrix input { margin: 0; accent-color: var(--accent); }
 .param input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
 .param output { color: var(--muted); }
 .hint { margin-top: 8px; }

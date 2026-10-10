@@ -102,6 +102,15 @@ int main(int argc, char **argv)
         if (fabs(ref[2 * i]) > maxref)
             maxref = fabs(ref[2 * i]);
     }
+    if (getenv("HOST_TEST_DUMP")) {          /* the C engine's output as float32 stereo, for inspection */
+        FILE *d = fopen(getenv("HOST_TEST_DUMP"), "wb");
+        for (i = 0; d && i < total; i++) {
+            float s[2] = {(float)(l[i] / 65536.0), (float)(r[i] / 65536.0)};
+            fwrite(s, 4, 2, d);
+        }
+        if (d)
+            fclose(d);
+    }
     printf("max_err %.6f at %ld  rms_err %.6f  rel_rms %.5f  bad %.4f%%  ref_peak %.4f\n", maxe, maxat, sqrt(sum / (2.0 * (double)total)),
            refsum > 0 ? sqrt(sum / refsum) : 0.0, 100.0 * (double)bad / (double)total, maxref);
     return 0;

@@ -87,6 +87,12 @@ const editor = new Editor($('canvas'), loadSaved() ?? PRESETS['Subtractive saw']
     queueSave(p);
     if (live()) queueUpload();
   },
+  onAtt(id, index, value) {
+    host.send({ t: 'att', id, index, value });
+    queueSave(editor.patch);
+    if (live() && !uploading) device.att(editor.patch, id, index, value);
+    else if (live()) dirty = true;
+  },
   onParam(id, name, value) {
     host.send({ t: 'param', id, name, value });
     queueSave(editor.patch);

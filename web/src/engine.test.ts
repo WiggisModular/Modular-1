@@ -75,7 +75,7 @@ describe('engine', () => {
   it('is silent without a note and sounds at the right pitch with one', () => {
     const e = new Engine(SR);
     const p = emptyPatch();
-    const kb = addModule(p, DEFS.midi, 0, 0);
+    const kb = addModule(p, DEFS.fm1, 0, 0);
     const o = addModule(p, DEFS.osc, 0, 0);
     const out = addModule(p, DEFS.output, 0, 0);
     connect(p, DEFS, { module: kb.id, port: 'pitch' }, { module: o.id, port: 'pitch' });
@@ -119,7 +119,7 @@ describe('engine', () => {
     const osc = addModule(p, DEFS.osc, 0, 0);
     Object.assign(osc.params, { wave: 3, pw: 0.2, level: 1 });
     const out = addModule(p, DEFS.output, 0, 0);
-    expect(connect(p, DEFS, { module: lfo.id, port: 'out' }, { module: osc.id, port: 'pw_cv' })).toBe(true);
+    expect(connect(p, DEFS, { module: lfo.id, port: 'out' }, { module: osc.id, port: 'p2' })).toBe(true); // p2 controls pw by default
     expect(connect(p, DEFS, { module: osc.id, port: 'out' }, { module: out.id, port: 'l' })).toBe(true);
     const e = new Engine(SR);
     e.load(p);
@@ -128,23 +128,87 @@ describe('engine', () => {
     expect(rms(l)).toBeGreaterThan(0.1);
   });
 
-  it('every parameter has a CV input that modulates it', () => {
-    for (const d of Object.values(DEFS).filter((x) => x.type !== 'fm1')) for (const pd of d.params) expect(d.inputs.some((i) => i.param === pd.name && i.name === `${pd.name}_cv`)).toBe(true);
-    const build = (patched: boolean) => {
+  it('every module but fm1 and output has the two parameter inputs and a matrix', () => {
+    for (const d of Object.values(DEFS)) {
+      const has = d.inputs.filter((i) => i.pin).map((i) => i.name);
+      if (['fm1', 'output'].includes(d.type)) expect(has, d.type).toEqual([]);
+      else expect(has, d.type).toEqual(['p1', 'p2']);
+      const m = addModule(emptyPatch(), d, 0, 0);
+      expect(!!m.map, d.type).toBe(!!d.paramInputs);
+    }
+    const osc = addModule(emptyPatch(), DEFS.osc, 0, 0);
+    expect(osc.map!.p1).toEqual(['wave']);
+    expect(osc.map!.k4).toEqual(['fine']);
+  });
+
+  it('a parameter input moves the parameters the matrix assigns it to, scaled and inverted by its attenuverter', () => {
+    const build = (att: number, assigned: boolean) => {
       const p = emptyPatch();
       const osc = addModule(p, DEFS.osc, 0, 0);
-      osc.params.level = 0;
+      osc.params.level = 0.5;
+      osc.map!.p1 = assigned ? ['level'] : [];
+      osc.att = [att, 1];
       const k = addModule(p, DEFS.const, 0, 0);
-      k.params.value = 0.5;
+      k.params.value = 0.25;
       const out = addModule(p, DEFS.output, 0, 0);
       connect(p, DEFS, { module: osc.id, port: 'out' }, { module: out.id, port: 'l' });
-      if (patched) expect(connect(p, DEFS, { module: k.id, port: 'out' }, { module: osc.id, port: 'level_cv' })).toBe(true);
+      expect(connect(p, DEFS, { module: k.id, port: 'out' }, { module: osc.id, port: 'p1' })).toBe(true);
       const e = new Engine(SR);
       e.load(p);
+      e.noteOn(60);
       return rms(render(e, 4800).l);
     };
-    expect(build(false)).toBeLessThan(1e-6);
-    expect(build(true)).toBeGreaterThan(0.1);
+    const base = build(1, false); // not assigned: no effect, level stays 0.5
+    expect(build(1, true) / base).toBeGreaterThan(1.4); // 0.5 + 0.25 = 0.75
+    expect(build(1, true) / base).toBeLessThan(1.6);
+    expect(build(-1, true) / base).toBeGreaterThan(0.45); // 0.5 - 0.25 = 0.25
+    expect(build(-1, true) / base).toBeLessThan(0.55);
+    expect(build(0, true) / base).toBeCloseTo(1, 1);
+  });
+
+  it('turns a saved MIDI module into the FM-1 panel (same pitch, gate and vel outputs)', () => {
+    const old = {
+      version: 2,
+      name: 'old',
+      modules: [
+        { id: 1, type: 'midi', x: 0, y: 0, params: {} },
+        { id: 2, type: 'osc', x: 0, y: 0, params: {} },
+        { id: 3, type: 'output', x: 0, y: 0, params: {} },
+      ],
+      cables: [
+        { from: { module: 1, port: 'pitch' }, to: { module: 2, port: 'pitch' } },
+        { from: { module: 2, port: 'out' }, to: { module: 3, port: 'l' } },
+      ],
+    };
+    const p = validatePatch(old, DEFS);
+    expect(p.modules[0].type).toBe('fm1');
+    const e = new Engine(SR);
+    e.load(p);
+    e.noteOn(69);
+    expect(freq(render(e, SR).l)).toBeGreaterThan(438);
+  });
+
+  it('converts version 1 patches (a <param>_cv cable becomes p1 / p2 with that parameter assigned)', () => {
+    const old = {
+      version: 1,
+      name: 'old',
+      modules: [
+        { id: 1, type: 'const', x: 0, y: 0, params: { value: 0.5 } },
+        { id: 2, type: 'osc', x: 0, y: 0, params: { level: 0 } },
+        { id: 3, type: 'output', x: 0, y: 0, params: {} },
+      ],
+      cables: [
+        { from: { module: 1, port: 'out' }, to: { module: 2, port: 'level_cv' } },
+        { from: { module: 2, port: 'out' }, to: { module: 3, port: 'l' } },
+      ],
+    };
+    const p = validatePatch(old, DEFS);
+    expect(p.version).toBe(2);
+    expect(p.cables[0].to.port).toBe('p1');
+    expect(p.modules[1].map!.p1).toEqual(['level']);
+    const e = new Engine(SR);
+    e.load(p);
+    expect(rms(render(e, 4800).l)).toBeGreaterThan(0.1);
   });
 
   it('FM-1 panel module outputs keys and knobs', () => {
@@ -154,7 +218,8 @@ describe('engine', () => {
     const osc = addModule(p, DEFS.osc, 0, 0);
     const out = addModule(p, DEFS.output, 0, 0);
     expect(connect(p, DEFS, { module: panel.id, port: 'pitch' }, { module: osc.id, port: 'pitch' })).toBe(true);
-    expect(connect(p, DEFS, { module: panel.id, port: 'k3' }, { module: osc.id, port: 'level_cv' })).toBe(true);
+    osc.map!.p1 = ['level'];
+    expect(connect(p, DEFS, { module: panel.id, port: 'k3' }, { module: osc.id, port: 'p1' })).toBe(true);
     expect(connect(p, DEFS, { module: osc.id, port: 'out' }, { module: out.id, port: 'l' })).toBe(true);
     const e = new Engine(SR);
     e.load(p);

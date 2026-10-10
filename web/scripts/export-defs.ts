@@ -22,7 +22,7 @@ w('};');
 w();
 for (const t of TYPE_ORDER) {
   const d = DEFS[t];
-  const explicit = d.inputs.filter((i) => !i.param);
+  const explicit = d.inputs.filter((i) => !i.pin);
   w(`/* ${t}: ${d.label} */`);
   d.inputs.forEach((p, i) => w(`#define ${up(t)}_I_${up(p.name)} ${i}`));
   d.outputs.forEach((p, i) => w(`#define ${up(t)}_O_${up(p.name)} ${i}`));
@@ -30,7 +30,7 @@ for (const t of TYPE_ORDER) {
   w(`#define ${up(t)}_NIN ${d.inputs.length}`);
   w(`#define ${up(t)}_NOUT ${d.outputs.length}`);
   w(`#define ${up(t)}_NPAR ${d.params.length}`);
-  w(`#define ${up(t)}_CVBASE ${d.params.length && d.inputs.some((i) => i.param) ? explicit.length : -1}`);
+  w(`#define ${up(t)}_CVBASE ${d.paramInputs ? explicit.length : -1}`);   /* index of p1; p2 follows */
   w();
 }
 const maxOf = (f: (t: string) => number): number => Math.max(...TYPE_ORDER.map(f));
@@ -40,8 +40,10 @@ w(`#define MAX_PAR ${maxOf((t) => DEFS[t].params.length)}`);
 w();
 w('typedef struct {');
 w('    uint8_t nin, nout, npar;');
-w('    int8_t cvbase;          /* index of the first <param>_cv input, -1: none */');
-w('    const int32_t *pmin, *pmax, *pdef;   /* Q16.16 */');
+w('    int8_t cvbase;          /* index of the p1 input (p2 follows), -1: the module has no parameter inputs */');
+w('    const int32_t *pmin, *pmax, *pdef, *pinc;   /* Q16.16; pinc: what one knob click adds */');
+w('    const char *name;       /* upper case, for the LCD */');
+w('    const char *const *pname;');
 w('} def_t;');
 w();
 for (const t of TYPE_ORDER) {
@@ -51,6 +53,8 @@ for (const t of TYPE_ORDER) {
   w(`static const int32_t ${up(t)}_MIN[] = {${row((p) => p.min)}};`);
   w(`static const int32_t ${up(t)}_MAX[] = {${row((p) => p.max)}};`);
   w(`static const int32_t ${up(t)}_DEF[] = {${row((p) => p.default)}};`);
+  w(`static const int32_t ${up(t)}_INC[] = {${row((p) => Math.max(p.step ?? 0, (p.max - p.min) / 100))}};`);
+  w(`static const char *const ${up(t)}_PN[] = {${ps.map((p) => `"${p.name.toUpperCase()}"`).join(', ')}};`);
 }
 w();
 w('static const def_t DEFS[N_TYPES] = {');
@@ -58,7 +62,7 @@ for (const t of TYPE_ORDER) {
   const d = DEFS[t];
   const has = d.params.length > 0;
   const n = up(t);
-  w(`    {${n}_NIN, ${n}_NOUT, ${n}_NPAR, ${n}_CVBASE, ${has ? `${n}_MIN, ${n}_MAX, ${n}_DEF` : '0, 0, 0'}},   /* ${t} */`);
+  w(`    {${n}_NIN, ${n}_NOUT, ${n}_NPAR, ${n}_CVBASE, ${has ? `${n}_MIN, ${n}_MAX, ${n}_DEF, ${n}_INC` : '0, 0, 0, 0'}, "${d.label.toUpperCase()}", ${has ? `${n}_PN` : '0'}},   /* ${t} */`);
 }
 w('};');
 w();

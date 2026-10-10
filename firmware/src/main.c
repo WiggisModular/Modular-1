@@ -58,100 +58,155 @@ static void fm1_fault(const fm1_crash_t *c)
     fm1_reboot();
 }
 
-static int32_t enc_acc[7];                       /* detent steps per encoder since boot (shown on the LCD: diagnostics) */
 static uint32_t cur_preset;
 static int load_err;
 static const char *patch_label = "";
+static uint32_t sel;                            /* the module the knobs act on (SELECT turns it) */
+static volatile uint8_t ui_dirty;               /* the module section needs a redraw */
 
-static void status_draw(void)                   /* the patch name and the engine's CPU load, a few times a second */
+#define C_DIM 0x7BEFu
+
+static char *put(char *d, const char *s)
 {
-    char line[24], num[12];
-    char *p = line;
-    uint32_t last = eng_us_last, peak = eng_us_max;
-    const char *s;
-    for (s = "CPU "; *s;)
-        *p++ = *s++;
-    fmt_int(num, (int32_t)(last * 100u / 2902u));
-    for (s = num; *s;)
-        *p++ = *s++;
-    for (s = "% PK "; *s;)
-        *p++ = *s++;
-    fmt_int(num, (int32_t)(peak * 100u / 2902u));
-    for (s = num; *s;)
-        *p++ = *s++;
-    *p++ = '%';
-    while (p < line + 16)
+    while (*s)
+        *d++ = *s++;
+    return d;
+}
+
+static char *pad(char *d, const char *start, uint32_t width)
+{
+    while (d < start + width)
+        *d++ = ' ';
+    *d = 0;
+    return d;
+}
+
+/* a Q16 parameter value, three significant figures: 1200, 12.5, 0.25 */
+static char *put_val(char *d, int32_t q16)
+{
+    int64_t x = ((int64_t)q16 * 100) / 65536;            /* hundredths */
+    int64_t a = x < 0 ? -x : x;
+    char b[14];
+    if (a >= 10000)
+        fmt_fix(b, (int32_t)(x / 100), 0);
+    else if (a >= 1000)
+        fmt_fix(b, (int32_t)(x / 10), 1);
+    else
+        fmt_fix(b, (int32_t)x, 2);
+    return put(d, b);
+}
+
+static void status_draw(void)                   /* the engine's CPU load, a few times a second */
+{
+    char line[24], num[12], *p = line;
+    p = put(p, "CPU ");
+    fmt_int(num, (int32_t)(eng_us_last * 100u / 2902u));
+    p = put(p, num);
+    p = put(p, "% PK ");
+    fmt_int(num, (int32_t)(eng_us_max * 100u / 2902u));
+    p = put(p, num);
+    p = put(p, "%");
+    pad(p, line, 20);
+    text5x7(12, 30, line, 1, C_DIM, C_BG);
+}
+
+/* the selected module: its name, what the four knobs change, and the two parameter inputs with their attenuverters */
+static void module_draw(void)
+{
+    char line[48], *p;
+    uint32_t n = (uint32_t)eng_nmodules(), k, j;
+    int type = eng_type(sel);
+    const def_t *d;
+    if (!n || type < 0) {
+        text5x7(12, 46, "NO MODULES                 ", 2, C_FG, C_BG);
+        return;
+    }
+    d = &DEFS[type];
+    p = line;
+    fmt_int(p, (int32_t)sel + 1);
+    p += str_len(p);
+    *p++ = '/';
+    fmt_int(p, (int32_t)n);
+    p += str_len(p);
+    *p++ = ' ';
+    p = put(p, d->name);
+    pad(p, line, 20);
+    text5x7(12, 46, line, 2, C_ACC, C_BG);
+    for (k = 0; k < 4u; k++) {
+        uint32_t mask = eng_knob_mask(sel, k), first = 0, cnt = 0;
+        char *start = line;
+        p = line;
+        *p++ = 'K';
+        *p++ = (char)('1' + k);
         *p++ = ' ';
-    *p = 0;
-    text5x7(12, 150, line, 2, C_FG, C_BG);
-    {   /* the panel knobs of an FM-1 panel module */
-        char kn[32], *q = kn;
-        int fm = eng_find(T_FM1);
-        uint32_t k;
-        if (fm < 0) {
-            for (s = "NO FM-1 PANEL MODULE: KNOBS OFF"; *s;)
-                *q++ = *s++;
+        for (j = 0; j < d->npar; j++)
+            if (mask >> j & 1u) {
+                if (!cnt)
+                    first = j;
+                cnt++;
+            }
+        if (!cnt) {
+            p = put(p, "-");
         } else {
-            for (k = 0; k < 4u; k++) {
-                *q++ = 'K';
-                *q++ = (char)('1' + k);
-                *q++ = ' ';
-                fmt_int(num, (eng_get_param((uint32_t)fm, FM1_P_K1 + k) + 328) / 655);
-                for (s = num; *s;)
-                    *q++ = *s++;
-                *q++ = ' ';
-                if (k < 3u)
-                    *q++ = ' ';
-            }
-        }
-        while (q < kn + 31)
-            *q++ = ' ';
-        *q = 0;
-        text5x7(12, 176, kn, 1, C_FG, C_BG);
-    }
-    {   /* every encoder: detent steps / raw transitions since boot (a dead knob shows 0/0) */
-        char ln[32], *q;
-        uint32_t e, row;
-        for (row = 0; row < 3u; row++) {
-            q = ln;
-            for (e = row * 3u; e < row * 3u + 3u && e < 7u; e++) {
-                *q++ = (char)('0' + e);
-                *q++ = ':';
-                fmt_int(num, enc_acc[e]);
-                for (s = num; *s;)
-                    *q++ = *s++;
-                *q++ = '/';
-                fmt_int(num, (int32_t)fm1_in_stat.enc_moves[e]);
-                for (s = num; *s;)
-                    *q++ = *s++;
-                *q++ = ' ';
-                *q++ = ' ';
-            }
-            while (q < ln + 28)
-                *q++ = ' ';
+            char nm[10], *q = nm;
+            q = put(q, d->pname[first]);
             *q = 0;
-            text5x7(12, 200u + 9u * row, ln, 1, 0x07E0u, C_BG);
+            if (str_len(nm) > 8u)
+                nm[8] = 0;
+            p = put(p, nm);
+            if (cnt > 1u)
+                p[-1] = '+';
+            pad(p, start + 3, 9);
+            p = start + 12;
+            *p++ = ' ';
+            put_val(p, eng_get_param(sel, first));
+            p += str_len(p);
         }
+        pad(p, start, 20);
+        text5x7(12, 74u + 22u * k, line, 2, cnt ? C_FG : C_DIM, C_BG);
     }
+    for (k = 0; k < 2u; k++) {
+        uint32_t mask = d->cvbase >= 0 ? eng_map(sel, k) : 0u;
+        char *start = line;
+        p = line;
+        *p++ = 'P';
+        *p++ = (char)('1' + k);
+        *p++ = ' ';
+        if (d->cvbase < 0) {
+            p = put(p, "NO PARAMETER INPUTS");
+        } else {
+            char num[12];
+            int32_t a = (int32_t)(((int64_t)eng_att(sel, k) * 100) / 65536);
+            fmt_fix(num, a, 2);
+            p = put(p, a < 0 ? "" : "+");
+            p = put(p, num);
+            for (j = 0; j < d->npar; j++)
+                if (mask >> j & 1u) {
+                    *p++ = ' ';
+                    p = put(p, d->pname[j]);
+                }
+        }
+        pad(p, start, 40);
+        text5x7(12, 170u + 10u * k, line, 1, d->cvbase >= 0 && mask ? C_FG : C_DIM, C_BG);
+    }
+    text5x7(12, 200, "SELECT: MODULE   K1-K4: PARAMS", 1, C_DIM, C_BG);
 }
 
 static void screen_idle(void)
 {
-    char b[16], *p = b;
+    char b[24], *p = b;
     lcd_fill(0, 0, 240, 240, C_BG);
-    text5x7(12, 24, "MODULAR-1", 4, C_FG, C_BG);
-    text5x7(12, 66, FELUCCA_ID, 2, C_ACC, C_BG);
-    text5x7(12, 90, FELUCCA_VERSION, 2, C_ACC, C_BG);
+    text5x7(12, 2, "MODULAR-1", 2, C_FG, C_BG);
+    text5x7(132, 8, FELUCCA_VERSION, 1, C_ACC, C_BG);
     if (load_err) {
-        const char *s = "LOAD ERR ";
-        while (*s)
-            *p++ = *s++;
+        p = put(p, "LOAD ERR ");
         fmt_int(p, load_err);
-        text5x7(12, 120, b, 2, 0xF800u, C_BG);
+        text5x7(12, 20, b, 1, 0xF800u, C_BG);
     } else {
-        text5x7(12, 120, patch_label, 2, C_FG, C_BG);
+        text5x7(12, 20, patch_label, 1, C_FG, C_BG);
     }
     status_draw();
+    module_draw();
 }
 
 /* proto.c hooks */
@@ -165,6 +220,7 @@ static int m1_apply(const uint8_t *patch, uint32_t len)
     load_err = -rc;
     eng_us_max = 0;
     eng_run = rc == 0;
+    sel = 0;
     patch_label = "FROM EDITOR";
     screen_idle();
     return rc;
@@ -251,28 +307,48 @@ static void master_boot(void)
     }
 }
 
-/* The four knobs (encoders 2..5 in Felucca's panel table: K1..K4) move the k1..k4 parameters of the patch's FM-1
- * panel module: a click is 0.01 of the range, 0.05 when turned fast. The values are written into the stored copy
- * too (STORE keeps them). */
+/* SELECT (encoder 0) steps through the modules of the patch. The four knobs (encoders 2..5, Felucca's panel table) change
+ * the parameters the selected module's matrix assigns to them (on the FM-1 panel: k1..k4): a click is 1/100 of the range
+ * (the parameter's own step if that is larger, so a choice moves one entry), five times that when turned fast. The new
+ * values go into the stored copy of the patch too. */
 static void knobs_poll(void)
 {
     static uint32_t last_ms[4];
     int32_t st[7];
-    int fm = eng_find(T_FM1);
-    uint32_t k;
-    for (k = 0; k < 7u; k++) {
+    uint32_t k, j, n = (uint32_t)eng_nmodules();
+    for (k = 0; k < 7u; k++)
         st[k] = fm1_enc_take(k);
-        enc_acc[k] += st[k];
+    if (!n)
+        return;
+    if (sel >= n)
+        sel = 0;
+    if (st[0]) {
+        int32_t m = ((int32_t)sel + st[0]) % (int32_t)n;
+        sel = (uint32_t)(m < 0 ? m + (int32_t)n : m);
+        ui_dirty = 1;
     }
     for (k = 0; k < 4u; k++) {
-        int32_t s = st[2u + k], v;
-        if (!s || fm < 0)
+        uint32_t mask;
+        if (!st[2u + k])
             continue;
-        v = eng_get_param((uint32_t)fm, FM1_P_K1 + k) + s * (fm1_ms - last_ms[k] < 80u ? 3277 : 655);
-        v = v < 0 ? 0 : v > 65536 ? 65536 : v;
-        last_ms[k] = fm1_ms;
-        eng_set_param((uint32_t)fm, FM1_P_K1 + k, v);
-        m1_patch_param((uint32_t)fm, FM1_P_K1 + k, v);
+        mask = eng_knob_mask(sel, k);
+        for (j = 0; j < DEFS[eng_type(sel)].npar; j++) {
+            const def_t *d = &DEFS[eng_type(sel)];
+            int32_t inc, v;
+            if (!(mask >> j & 1u))
+                continue;
+            inc = d->pinc[j];
+            if (inc < ENG_ONE && fm1_ms - last_ms[k] < 80u)
+                inc *= 5;
+            v = eng_get_param(sel, j) + st[2u + k] * inc;
+            v = v < d->pmin[j] ? d->pmin[j] : v > d->pmax[j] ? d->pmax[j] : v;
+            eng_set_param(sel, j, v);
+            m1_patch_param(sel, j, v);
+        }
+        if (mask) {
+            last_ms[k] = fm1_ms;
+            ui_dirty = 1;
+        }
     }
 }
 
@@ -325,6 +401,10 @@ static void fm1_main(void)
             if (fm1_ms - t_stat >= 250u) {
                 t_stat = fm1_ms;
                 status_draw();
+            }
+            if (ui_dirty) {
+                ui_dirty = 0;
+                module_draw();
             }
         }
         {   /* OCT- + OCT+ (matrix buttons 0 and 1) held 5 s: UBOOT, as in Felucca */

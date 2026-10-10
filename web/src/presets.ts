@@ -1,14 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { DEFS } from './modules';
-import { addModule, connect, emptyPatch, type Patch } from './patch';
+import { addModule, connect, emptyPatch, type Patch, type Source } from './patch';
 
-export type Build = (add: (type: string, x: number, y: number, params?: Record<string, number>) => number, wire: (a: number, ap: string, b: number, bp: string) => void) => void;
+export interface AddOpts {
+  map?: Partial<Record<Source, string[]>>;
+  att?: [number, number];
+}
+export type Build = (add: (type: string, x: number, y: number, params?: Record<string, number>, opts?: AddOpts) => number, wire: (a: number, ap: string, b: number, bp: string) => void) => void;
 
 export function make(name: string, build: Build): Patch {
   const p = emptyPatch(name);
-  const add = (type: string, x: number, y: number, params: Record<string, number> = {}): number => {
-    const m = addModule(p, DEFS[type], x, y);
+  const add = (type: string, x: number, y: number, params: Record<string, number> = {}, opts: AddOpts = {}): number => {
+    const m = addModule(p, DEFS[type], Math.round(x * 1.3), Math.round(y * 1.3)); // cards are wider and taller than they used to be
     Object.assign(m.params, params);
+    if (opts.map) Object.assign(m.map!, opts.map);
+    if (opts.att) m.att = opts.att;
     return m.id;
   };
   const wire = (a: number, ap: string, b: number, bp: string): void => {
@@ -21,7 +27,7 @@ export function make(name: string, build: Build): Patch {
 export const PRESETS: Record<string, () => Patch> = {
   '303 Acid': () =>
     make('303 Acid', (add, wire) => {
-      const kb = add('midi', 20, 40);
+      const kb = add('fm1', 20, 40);
       const osc = add('osc', 220, 20, { wave: 2, coarse: -12, level: 0.9 });
       const fenv = add('adsr', 220, 430, { a: 0.001, d: 0.22, s: 0, r: 0.1 });
       const flt = add('filter', 440, 20, { cutoff: 180, res: 0.88, cvamt: 3.2 });
@@ -41,7 +47,7 @@ export const PRESETS: Record<string, () => Patch> = {
     }),
   'Subtractive saw': () =>
     make('Subtractive saw', (add, wire) => {
-      const kb = add('midi', 20, 40);
+      const kb = add('fm1', 20, 40);
       const osc = add('osc', 220, 20, { wave: 2 });
       const env = add('adsr', 220, 430, { a: 0.01, d: 0.3, s: 0.5, r: 0.4 });
       const flt = add('filter', 440, 20, { cutoff: 600, res: 0.45, cvamt: 2 });
@@ -57,7 +63,7 @@ export const PRESETS: Record<string, () => Patch> = {
     }),
   'Two-operator FM': () =>
     make('Two-operator FM', (add, wire) => {
-      const kb = add('midi', 20, 120);
+      const kb = add('fm1', 20, 120);
       const mod = add('osc', 220, 20, { wave: 0, coarse: 12, level: 1 });
       const modEnv = add('adsr', 220, 430, { a: 0.001, d: 0.5, s: 0.1, r: 0.3 });
       const modVca = add('vca', 440, 20, { gain: 1 });
@@ -78,7 +84,7 @@ export const PRESETS: Record<string, () => Patch> = {
     }),
   'Wobble bass': () =>
     make('Wobble bass', (add, wire) => {
-      const kb = add('midi', 20, 40);
+      const kb = add('fm1', 20, 40);
       const osc = add('osc', 220, 20, { wave: 3, coarse: -12 });
       const lfo = add('lfo', 220, 430, { rate: 3, wave: 0 });
       const flt = add('filter', 440, 20, { cutoff: 300, res: 0.6, cvamt: 1.5 });
@@ -99,20 +105,20 @@ export const PRESETS: Record<string, () => Patch> = {
       const fm = add('fm1', 20, 40, { k1: 0.5, k2: 0.4, k3: 0.25, k4: 0.35 });
       const osc = add('osc', 260, 20, { wave: 2, level: 0.8 });
       const env = add('adsr', 260, 430, { a: 0.005, d: 0.25, s: 0.6, r: 0.25 });
-      const flt = add('filter', 480, 20, { cutoff: 20, res: 0, cvamt: 0 });
+      const flt = add('filter', 480, 20, { cutoff: 20, res: 0, cvamt: 0 }); // p1 = cutoff, p2 = resonance (the default matrix)
       const vca = add('vca', 700, 20);
-      const dly = add('delay', 700, 430, { time: 1, fb: 0.4, mix: 0 });
+      const dly = add('delay', 700, 430, { time: 1, fb: 0.4, mix: 0 }, { map: { p1: ['mix'], p2: ['time'] } });
       const out = add('output', 920, 40);
       wire(fm, 'pitch', osc, 'pitch');
       wire(fm, 'gate', env, 'gate');
       wire(osc, 'out', flt, 'in');
-      wire(fm, 'k1', flt, 'cutoff_cv');
-      wire(fm, 'k2', flt, 'res_cv');
+      wire(fm, 'k1', flt, 'p1');
+      wire(fm, 'k2', flt, 'p2');
       wire(flt, 'lp', vca, 'in');
       wire(env, 'env', vca, 'cv');
       wire(vca, 'out', dly, 'in');
-      wire(fm, 'k3', dly, 'mix_cv');
-      wire(fm, 'k4', dly, 'time_cv');
+      wire(fm, 'k3', dly, 'p1');
+      wire(fm, 'k4', dly, 'p2');
       wire(dly, 'out', out, 'l');
     }),
 };

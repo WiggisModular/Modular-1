@@ -69,19 +69,9 @@ function wave(kind: number, phase: number, dt: number, pw = 0.5): number {
   }
 }
 
-const midi: ModuleImpl<null> = {
-  def: { type: 'midi', label: 'MIDI in', inputs: [], outputs: [control('pitch'), gate('gate'), control('vel')], params: [] },
-  init: () => null,
-  process(c) {
-    c.out.pitch.fill(c.voice.pitch, 0, c.n);
-    c.out.gate.fill(c.voice.gate, 0, c.n);
-    c.out.vel.fill(c.voice.velocity, 0, c.n);
-  },
-};
-
 /**
- * The FM-1 front panel as a module: the 27 note keys (pitch/gate/velocity, octave buttons applied),
- * and encoders 1-4 as 0..1 values. In the browser the panel is the module's own sliders; on the
+ * The FM-1 front panel as a module, the patch's only input: the voice that the 27 note keys and MIDI play
+ * (pitch/gate/velocity; MIDI is handled by the firmware / the browser host, not by a module) and encoders 1-4 as 0..1 values. In the browser the panel is the module's own sliders; on the
  * device the encoders feed the same outputs.
  */
 const N_KNOBS = 4;
@@ -364,11 +354,21 @@ const output: ModuleImpl<null> = {
   },
 };
 
-const ALL = [midi, fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, output];
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, output];
 
-/** Every parameter (except the FM-1 panel's own controls) gets a control input `<name>_cv`: the effective value is base + cv * (max - min), clamped. */
-export const cvPort = (param: string): string => `${param}_cv`;
-for (const m of ALL) for (const p of m.def.params) if (m.def.type !== 'fm1') m.def.inputs.push({ name: cvPort(p.name), kind: 'control', param: p.name });
+/**
+ * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an
+ * attenuverter (-1..1), and a matrix that says which parameters p1, p2 and the knobs k1..k4 control. A parameter's
+ * effective value is its base + (block mean of p1 x att1 + block mean of p2 x att2, for the inputs that control it) x
+ * (max - min), clamped.
+ */
+export const PIN_EXEMPT = new Set(['fm1', 'output']);
+export const PIN_NAMES = ['p1', 'p2'] as const;
+for (const m of ALL)
+  if (!PIN_EXEMPT.has(m.def.type) && m.def.params.length) {
+    m.def.paramInputs = true;
+    m.def.inputs.push({ name: 'p1', kind: 'control', pin: 1 }, { name: 'p2', kind: 'control', pin: 2 });
+  }
 
 export const IMPLS: Record<string, ModuleImpl> = Object.fromEntries(ALL.map((m) => [m.def.type, m as ModuleImpl]));
 

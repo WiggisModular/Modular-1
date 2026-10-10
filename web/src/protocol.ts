@@ -12,13 +12,14 @@
 //   11 COMMIT   total u16, crc16 u16                 check the assembled patch and switch to it; ACK
 //   12 STORE    -                                    write the current patch to flash; ACK
 //   20 PARAM    module u8, param u8, value i32       live parameter change (Q16.16), no reply
+//   21 ATT      module u8, input u8 (0 p1, 1 p2), value i32   live attenuverter change (Q16.16, -1..1), no reply
 // device -> host
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded), delay lines
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store
 
 export const PREFIX = [0x7d, 0x4d, 0x31];
-export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, ack: 0x40, info: 0x41 } as const;
+export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, ack: 0x40, info: 0x41 } as const;
 export const PROTO_VERSION = 1;
 export const CHUNK_BYTES = 384;
 export const STATUS_TEXT = ['ok', 'bad offset or size', 'checksum mismatch', 'the firmware refused the patch', 'flash error', 'unknown command', 'nothing to store'];
@@ -100,6 +101,11 @@ export const chunkFrames = (patch: Uint8Array, size = CHUNK_BYTES): Uint8Array[]
 export const paramFrame = (module: number, param: number, q16: number): Uint8Array => {
   const v = q16 | 0;
   return frame(CMD.param, [module, param, v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff]);
+};
+
+export const attFrame = (module: number, input: number, q16: number): Uint8Array => {
+  const v = q16 | 0;
+  return frame(CMD.att, [module, input, v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff]);
 };
 
 export interface Info {

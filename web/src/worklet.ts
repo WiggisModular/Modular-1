@@ -12,6 +12,7 @@ declare function registerProcessor(name: string, ctor: new () => AudioWorkletPro
 export type HostMsg =
   | { t: 'patch'; patch: Patch }
   | { t: 'param'; id: number; name: string; value: number }
+  | { t: 'att'; id: number; index: number; value: number }
   | { t: 'on'; note: number; vel: number }
   | { t: 'off'; note: number }
   | { t: 'panic' };
@@ -25,6 +26,7 @@ class ModularProcessor extends AudioWorkletProcessor {
       try {
         if (m.t === 'patch') this.engine.load(m.patch);
         else if (m.t === 'param') this.engine.setParam(m.id, m.name, m.value);
+        else if (m.t === 'att') this.engine.setAtt(m.id, m.index, m.value);
         else if (m.t === 'on') this.engine.noteOn(m.note, m.vel);
         else if (m.t === 'off') this.engine.noteOff(m.note);
         else if (m.t === 'panic') this.engine.allNotesOff();

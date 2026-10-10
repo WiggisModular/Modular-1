@@ -2,8 +2,8 @@
 // Block-based patch engine. Pure TypeScript with no DOM or Web Audio dependency, so it runs in
 // an AudioWorklet, in tests, and (as the reference) next to the firmware port.
 
-import { IMPLS, cvPort, type Ctx, type ModuleImpl, type Voice } from './modules';
-import { processingOrder, type Cable, type Patch } from './patch';
+import { IMPLS, type Ctx, type ModuleImpl, type Voice } from './modules';
+import { defaultMap, processingOrder, SOURCES, type Cable, type Patch, type Source } from './patch';
 
 export const BLOCK = 128;
 
@@ -13,8 +13,10 @@ interface Node {
   impl: ModuleImpl;
   state: unknown;
   params: Record<string, number>;
-  /** params after CV modulation, what the module reads */
+  /** params after modulation, what the module reads */
   eff: Record<string, number>;
+  att: [number, number];
+  map: Record<Source, string[]>;
   inp: Record<string, Float32Array>;
   out: Record<string, Float32Array>;
   connected: Record<string, boolean>;
@@ -47,12 +49,16 @@ export class Engine {
               state: impl.init(this.sampleRate),
               params: {},
               eff: {},
+              att: [1, 1],
+              map: defaultMap(impl.def),
               inp: Object.fromEntries(impl.def.inputs.map((p) => [p.name, new Float32Array(BLOCK)])),
               out: Object.fromEntries(impl.def.outputs.map((p) => [p.name, new Float32Array(BLOCK)])),
               connected: {},
               sources: [],
             };
       node.params = { ...m.params };
+      node.att = m.att ? [m.att[0], m.att[1]] : [1, 1];
+      node.map = Object.fromEntries(SOURCES.map((s) => [s, [...(m.map?.[s] ?? [])]])) as Record<Source, string[]>;
       node.sources = [];
       node.connected = {};
       next.set(m.id, node);
@@ -74,17 +80,31 @@ export class Engine {
     if (n) n.params[name] = value;
   }
 
-  /** Block-rate parameter modulation: the mean of each `<param>_cv` input over the block. */
+  setAtt(id: number, index: number, value: number): void {
+    const n = this.nodes.get(id);
+    if (n && (index === 0 || index === 1)) n.att[index] = value;
+  }
+
+  /** Block-rate parameter modulation: the mean of p1 and p2 over the block, times their attenuverters, added to the parameters the matrix assigns them to. */
   private applyCv(node: Node, n: number): void {
+    const pins: (number | null)[] = [null, null];
+    if (node.impl.def.paramInputs)
+      (['p1', 'p2'] as const).forEach((name, s) => {
+        if (!node.connected[name]) return;
+        let sum = 0;
+        for (let i = 0; i < n; i++) sum += node.inp[name][i];
+        pins[s] = (sum / n) * node.att[s];
+      });
     for (const pd of node.impl.def.params) {
       let v = node.params[pd.name] ?? pd.default;
-      const cv = node.connected[cvPort(pd.name)] ? node.inp[cvPort(pd.name)] : null;
-      if (cv) {
-        let sum = 0;
-        for (let i = 0; i < n; i++) sum += cv[i];
-        v = Math.min(pd.max, Math.max(pd.min, v + (sum / n) * (pd.max - pd.min)));
-      }
-      node.eff[pd.name] = v;
+      let touched = false;
+      (['p1', 'p2'] as const).forEach((name, s) => {
+        if (pins[s] !== null && node.map[name].includes(pd.name)) {
+          v += pins[s]! * (pd.max - pd.min);
+          touched = true;
+        }
+      });
+      node.eff[pd.name] = touched ? Math.min(pd.max, Math.max(pd.min, v)) : v;
     }
   }
 

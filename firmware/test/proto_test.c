@@ -3,7 +3,7 @@
 /* Host test of proto.c: feeds the frames produced by web/scripts/golden.ts (a patch upload and a parameter change,
  * NAME.syx = concatenated F0..F7 messages) and checks that the engine then renders bit-exactly what it renders
  * after eng_load of the same patch plus eng_set_param.
- *   proto_test NAME.m1p NAME.syx MODULE PARAM VALUE_Q16 */
+ *   proto_test NAME.m1p NAME.syx MODULE PARAM VALUE_Q16 ATT_MODULE ATT_INPUT ATT_Q16 */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,18 +63,22 @@ int main(int argc, char **argv)
     long np, ns, i, at = 0;
     uint8_t *patch, *syx;
     static int32_t a_l[128 * 40], a_r[128 * 40], b_l[128 * 40], b_r[128 * 40];
-    uint32_t mod, par, acks_ok = 0;
-    int32_t val;
-    if (argc < 6)
+    uint32_t mod, par, acks_ok = 0, amod, ain;
+    int32_t val, aval;
+    if (argc < 9)
         return 2;
     patch = slurp(argv[1], &np);
     syx = slurp(argv[2], &ns);
     mod = (uint32_t)atoi(argv[3]);
     par = (uint32_t)atoi(argv[4]);
     val = atoi(argv[5]);
+    amod = (uint32_t)atoi(argv[6]);
+    ain = (uint32_t)atoi(argv[7]);
+    aval = atoi(argv[8]);
     /* reference: direct load + parameter */
     CHECK(eng_load(patch, (uint32_t)np) == 0);
     eng_set_param(mod, par, val);
+    eng_set_att(amod, ain, aval);
     run(a_l, a_r);
     eng_all_notes_off();
     /* protocol: the frames, then the same render */
@@ -100,11 +104,9 @@ int main(int argc, char **argv)
     CHECK(memcmp(a_l, b_l, sizeof a_l) == 0 && memcmp(a_r, b_r, sizeof a_r) == 0);
     /* the stored copy carries the live parameter */
     {
-        uint32_t k, at2 = 8;
-        for (k = 0; k < mod; k++)
-            at2 += 1u + 4u * DEFS[m1_cur[at2]].npar;
-        at2 += 1u + 4u * par;
+        uint32_t at2 = m1_record(mod) + 1u + 4u * par, at3 = m1_record(amod) + 1u + 4u * DEFS[m1_cur[m1_record(amod)]].npar + 4u * ain;
         CHECK((int32_t)((uint32_t)m1_cur[at2] | (uint32_t)m1_cur[at2 + 1] << 8 | (uint32_t)m1_cur[at2 + 2] << 16 | (uint32_t)m1_cur[at2 + 3] << 24) == val);
+        CHECK((int32_t)((uint32_t)m1_cur[at3] | (uint32_t)m1_cur[at3 + 1] << 8 | (uint32_t)m1_cur[at3 + 2] << 16 | (uint32_t)m1_cur[at3 + 3] << 24) == aval);
     }
     /* a corrupted commit is refused and the old patch keeps running */
     nreplies = 0;
