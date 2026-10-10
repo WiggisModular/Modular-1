@@ -18,19 +18,36 @@ From the Felucca and FM-1 reverse-engineering projects: a JieLi AC791N SoC (pi32
 
 `web/src/engine.ts` and `web/src/modules.ts` are the reference implementation: float DSP, 128-frame blocks, patch graph ordered by `processingOrder` (loops become one-block feedback). Module definitions (`ModuleDef`) are data and are shared by the editor and, later, the firmware.
 
-## Firmware: not started, and why
+## Firmware
 
-The firmware needs JieLi's pi32v2 clang toolchain and the AC79 SDK (from Gitee). Neither host was reachable from the environment this was written in, so nothing under `firmware/` has been compiled or run; `tools/build.py` still expects Felucca's `firmware/src/`, which is deliberately not copied.
+Builds with `tools/build.py` inside `nix develop` (see CLAUDE.md), flashes with the web flasher or `tools/fm1_install.py`.
 
-Planned steps, each testable on its own:
+- `firmware/src/engine.c` is the fixed-point port of `web/src/engine.ts` and `modules.ts` (all 13 modules, mono voice, CV inputs, feedback cables as one block of delay). Signals and parameters are Q16.16, oscillator phase u32, filter coefficients Q24, envelope Q30; sine, exp2 and tan come from tables (`tools/gen_dsp_tables.py` -> `dsp_tables.h`). No float anywhere. The 32x32->64 multiply and the 32-bit divide are hardware; 64-bit division (a libcall) is used only at block rate and on waveform edges.
+- `firmware/src/defs.h` and `presets.h` are generated from the TypeScript definitions (`npm run export-defs` in `web/`): module/port/parameter indices and the factory patches in the binary format of `web/src/patchbin.ts`. Port and type indices are append-only.
+- The audio ISR (`audio.c`) renders 128 frames per half buffer. MIDI program change selects a factory patch, note on/off and CC 123 drive the voice. The LCD shows the patch name and the measured CPU load (ISR time per half buffer, key scan and USB nested in it).
+- `tools/golden.sh` renders 11 patches with the TypeScript engine and the C engine (host build) and compares them. Smooth patches agree to about 0.1 % rms (-60 dB), patches with saw/square edges to 1-2 % rms: the Q16 pitch grid moves an edge by a fraction of a sample, which gives short spikes at the edges and no audible difference.
+- Memory: signal buffers 82 KB and two delay lines of 93 KB (int16, Q13) sit in the 360 KB pool; limits are 32 modules, 192 cables, 2 delays.
 
-1. **Hello-world app:** `main.c` that boots on the Felucca HAL, drives the LCD, prints a counter, outputs a sine, and reports identity `FM-1_800`. Flash it with this repo's flasher. Purpose: prove the toolchain, the package and the recovery path before anything else.
-2. **Port the engine to fixed-point C:** same module set, patch graph from a compact binary. Check against the TypeScript engine with golden output vectors. A measured CPU budget decides how many modules fit.
-3. **Patch transfer:** SysEx messages to upload a patch to RAM and store it in flash, plus live parameter changes (the editor already emits `param` and `patch` events).
-4. **Panel mapping:** keys to the MIDI module, knobs assignable to module parameters, LCD showing the patch.
+Not done yet: patch upload over SysEx, live parameter changes from the editor, the FM-1's own keys and knobs, storing a patch in flash.
 
 ## Open questions
 
 - Per-voice polyphony (the TS engine is mono).
-- Fixed-point vs. float on pi32v2 (needs a measurement).
+- ~~Fixed-point vs. float on pi32v2~~ settled by measurement, see below.
 - Patch binary format and flash layout (must not touch the loader or the boot-guard areas).
+
+## Measured CPU budget (benchmark firmware, `firmware/src/bench.c`)
+
+Per 128-frame block (2902 us of audio), interrupts off, 16 repetitions, 1 us resolution, run on a real FM-1:
+
+| kernel | us/block | instances in 70 % of a block |
+|---|---|---|
+| osc, Q15 parabolic sine | 7 | 290 |
+| 4x Q15 multiply-add | 9 | 225 |
+| state variable filter, Q15 | 8 | 253 |
+| osc, float | 489 | 4 |
+| 4x float multiply-add | 444 | 4 |
+| state variable filter, float | 340 | 5 |
+| float to int16 per frame | 116 | 17 |
+
+Conclusions: the core has no FPU (float links against `libcompiler-rt.a` soft float) and float is 40 to 70 times slower, so the audio path is **fixed point only** (Q15 samples, 32-bit accumulators, no float, no 64-bit division). Float is acceptable only at control rate (per block), and better avoided. The fixed kernels are tiny; real modules will cost several times their bare kernel (buffer traffic, modulation, CV), so plan for tens of module instances, and measure the real engine before promising more. The 1 us resolution makes the fixed numbers coarse (+-1 us).

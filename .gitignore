@@ -3,3 +3,4 @@ dist/
 build/
 *.fwsc
 .DS_Store
+__pycache__/

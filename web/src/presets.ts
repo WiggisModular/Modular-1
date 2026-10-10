@@ -2,9 +2,9 @@
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
 
-type Build = (add: (type: string, x: number, y: number, params?: Record<string, number>) => number, wire: (a: number, ap: string, b: number, bp: string) => void) => void;
+export type Build = (add: (type: string, x: number, y: number, params?: Record<string, number>) => number, wire: (a: number, ap: string, b: number, bp: string) => void) => void;
 
-function make(name: string, build: Build): Patch {
+export function make(name: string, build: Build): Patch {
   const p = emptyPatch(name);
   const add = (type: string, x: number, y: number, params: Record<string, number> = {}): number => {
     const m = addModule(p, DEFS[type], x, y);

@@ -12,7 +12,7 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**, with a browser app
 
 - `web/`: Vite + TS. `src/patch.ts` (data model, ordering, validation), `src/modules.ts` (12 module defs + DSP), `src/engine.ts` (block engine, mono), `src/worklet.ts` + `src/audio.ts` (AudioWorklet, bundled via `?worker&url`), `src/editor.ts` (DOM cards + SVG cables), `src/flasher.ts` (UI over Felucca's `src/flasher/fm1ota.js`, `fm1pkg.js`), `src/presets.ts`, `src/input.ts`.
 - `npm test` (vitest, 10 tests), `npm run build`, `npm run dev` all pass. The built app was smoke-tested in headless Chromium: audio worklet produces sound on key down, silent after release, cable drag/remove works.
-- `firmware/hal`, `firmware/loader`, `firmware/crt0.S`, `firmware/app.ld`, `tools/*` are **unmodified copies** from Felucca. There is **no `firmware/src/`**, so `tools/build.py` cannot run yet.
+- `firmware/hal`, `firmware/crt0.S`, `firmware/app.ld`, `tools/*` are copies from Felucca (`build.py` adapted, loader ID changed to `ota-FM-1_800`).
 
 ## Added since milestone 1 (web only, tests pass: 14)
 
@@ -21,6 +21,25 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**, with a browser app
 - Module `fm1` ("FM-1 panel"): pitch/gate/vel plus knobs k1..k4 (sliders on the card). Buttons and the other 3 encoders were deliberately left out.
 - A single-file HTML build was tried and reverted at the user's request; the build stays multi-file.
 - Firmware build was attempted: blocked on macOS (no Docker, toolchain is Linux x86-64), no `firmware/src/`, no SDK files. The user moves to a Linux box, so step 1 below can run natively.
+
+## Firmware build (works, not flashed)
+
+- `nix develop` (flake.nix) sets `JIELI_TOOLCHAIN=~/.jieli/toolchain` and `AC79_SDK=~/.jieli/ac79-sdk`. Toolchain: `tools/get_toolchain.sh`; SDK: sparse clone of `cpu/wl82/tools` at tag `AC79NN_SDK_V1.2.1_2023-12-13` (the 3 files match the expected SHA-256). The prebuilt clang runs on NixOS via nix-ld.
+- `python3 tools/build.py` builds `build/felucca.bin` (15 KB), `build/loader/ota.bin` and `build/felucca.fwsc` (identity `FM-1_800`) with no warnings; all checks pass.
+- `firmware/src/` (bring-up): `modular.c` (single unit), `main.c` (reduced Felucca boot: boot-loop guard, OCT-/OCT+ 5 s UBOOT, OTA, UBOOT SysEx), `audio.c` (sine voice on MIDI notes), `font5x7.c`, plus Felucca's `usb.c`, `ota.c`, `ota_hw.c`, `storage_hw.c`, `lcd.c`, `libc.c` (ota_hw.c edited to use `text5x7`). Felucca source: `~/.jieli/felucca` at `a4d7ca2e`.
+- build.py no longer runs `generate()` (the gen_*.py tools are not in this repo) and skips `size_fns.py` unless `FELUCCA_SIZE=1`.
+- The sine/MIDI/LCD code has never run on hardware.
+
+## Measured on device (flashing works, user-confirmed)
+
+Benchmark (`firmware/src/bench.c`, numbers in docs/ARCHITECTURE.md): no FPU, float 40-70x slower than Q15 (osc 489 us vs 7 us per 128-frame block). **Decision: audio path fixed point only.** `tools/build.py` links `libcompiler-rt.a` from the toolchain; install with `nix develop -c python3 tools/fm1_install.py build/felucca.fwsc` (mido/rtmidi are in the flake; the tool asks for confirmation interactively).
+
+## Engine port (done on the host, not yet measured on device)
+
+- `firmware/src/engine.c` (+ `engine.h`, generated `defs.h`, `presets.h`, `dsp_tables.h`): fixed-point port of all 13 modules, mono, Q16.16. `tools/golden.sh` (inside `nix develop`) compares it with `web/src/engine.ts`: 11 patches pass (rms error <= 3 % of reference rms; smooth patches ~0.1 %).
+- Regenerate after changing `modules.ts` or `presets.ts`: `cd web && npm run export-defs` (defs.h, presets.h); tables: `python3 tools/gen_dsp_tables.py`. Binary patch format: `web/src/patchbin.ts` (type/port indices are append-only).
+- Device: audio ISR renders the engine; MIDI program change = factory patch, LCD shows CPU %. Build passes; flash it and read the CPU figure for the 303 Acid preset before anything else.
+- `firmware/src/bench.c` is only compiled with `-DM1_BENCH`.
 
 ## Not verified — do not claim otherwise
 
@@ -35,10 +54,10 @@ SysEx over USB MIDI. The device *pulls* blocks: it sends read requests (cmd 0x30
 
 ## Next steps (in order)
 
-1. **Get the toolchain.** `tools/get_toolchain.sh` (downloads from `pkgman.jieliapp.com`) and the AC79 SDK (`Gitee Jieli-Tech/fw-AC79_AIoT_SDK`, tag `AC79NN_SDK_V1.2.1_2023-12-13`; needs `cpu/wl82/tools/uboot.boot`, `cfg_tool.bin`, `cfg/eq_cfg_hw.bin`). These hosts were blocked in the cloud sandbox but should work on the user's machine. Linux x86-64 native; macOS uses Docker (`JIELI_DOCKER`). Env: `JIELI_TOOLCHAIN`, `AC79_SDK`.
-2. **Hello-world firmware** in `firmware/src/` (`main.c` etc.): boot on the Felucca HAL, LCD text, sine out, identity `FM-1_800`. Reuse Felucca's `main.c` boot order, `fm1_cstart`, `usb.c` (MIDI + the OTA request handling in `ota.c`/`ota_hw.c` must stay so the device can be re-flashed!), `audio.c`, `lcd.c`. Strip everything engine/UI related. Adapt `tools/build.py` (it compiles only `firmware/src/felucca.c` as a single unit including the other `.c` files, and runs `mmio_check`: register access only inside `hal/`).
+1. (done, see above) **Get the toolchain.** `tools/get_toolchain.sh` (downloads from `pkgman.jieliapp.com`) and the AC79 SDK (`Gitee Jieli-Tech/fw-AC79_AIoT_SDK`, tag `AC79NN_SDK_V1.2.1_2023-12-13`; needs `cpu/wl82/tools/uboot.boot`, `cfg_tool.bin`, `cfg/eq_cfg_hw.bin`). These hosts were blocked in the cloud sandbox but should work on the user's machine. Linux x86-64 native; macOS uses Docker (`JIELI_DOCKER`). Env: `JIELI_TOOLCHAIN`, `AC79_SDK`.
+2. (built, untested on device) **Hello-world firmware** in `firmware/src/` (`main.c` etc.): boot on the Felucca HAL, LCD text, sine out, identity `FM-1_800`. Reuse Felucca's `main.c` boot order, `fm1_cstart`, `usb.c` (MIDI + the OTA request handling in `ota.c`/`ota_hw.c` must stay so the device can be re-flashed!), `audio.c`, `lcd.c`. Strip everything engine/UI related. Adapt `tools/build.py` (it compiles only `firmware/src/felucca.c` as a single unit including the other `.c` files, and runs `mmio_check`: register access only inside `hal/`).
 3. Run `tools/build.py`, flash with `web/` flasher or `tools/fm1_install.py`. Keep the official `FM-1.fwsc` handy for return-to-stock. Test the recovery path (interrupt a write) deliberately before trusting anything.
-4. Port the engine to fixed-point C; golden-vector test against `web/src/engine.ts`. Measure CPU (Felucca shows CPU load in MENU > SYSTEM > INFO; its `tests/target_budget.py` is a reference).
+4. (done on host) Port the engine to fixed-point C; golden-vector test against `web/src/engine.ts`. Measure CPU on device (Felucca shows CPU load in MENU > SYSTEM > INFO; its `tests/target_budget.py` is a reference).
 5. Patch transfer over SysEx, panel mapping. See `docs/ARCHITECTURE.md`.
 
 ## Gotchas
