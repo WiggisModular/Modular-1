@@ -2,7 +2,7 @@
 // Block-based patch engine. Pure TypeScript with no DOM or Web Audio dependency, so it runs in
 // an AudioWorklet, in tests, and (as the reference) next to the firmware port.
 
-import { IMPLS, type Ctx, type ModuleImpl, type Voice } from './modules';
+import { IMPLS, cvPort, type Ctx, type ModuleImpl, type Voice } from './modules';
 import { processingOrder, type Cable, type Patch } from './patch';
 
 export const BLOCK = 128;
@@ -13,6 +13,8 @@ interface Node {
   impl: ModuleImpl;
   state: unknown;
   params: Record<string, number>;
+  /** params after CV modulation, what the module reads */
+  eff: Record<string, number>;
   inp: Record<string, Float32Array>;
   out: Record<string, Float32Array>;
   connected: Record<string, boolean>;
@@ -44,6 +46,7 @@ export class Engine {
               impl,
               state: impl.init(this.sampleRate),
               params: {},
+              eff: {},
               inp: Object.fromEntries(impl.def.inputs.map((p) => [p.name, new Float32Array(BLOCK)])),
               out: Object.fromEntries(impl.def.outputs.map((p) => [p.name, new Float32Array(BLOCK)])),
               connected: {},
@@ -69,6 +72,20 @@ export class Engine {
   setParam(id: number, name: string, value: number): void {
     const n = this.nodes.get(id);
     if (n) n.params[name] = value;
+  }
+
+  /** Block-rate parameter modulation: the mean of each `<param>_cv` input over the block. */
+  private applyCv(node: Node, n: number): void {
+    for (const pd of node.impl.def.params) {
+      let v = node.params[pd.name] ?? pd.default;
+      const cv = node.connected[cvPort(pd.name)] ? node.inp[cvPort(pd.name)] : null;
+      if (cv) {
+        let sum = 0;
+        for (let i = 0; i < n; i++) sum += cv[i];
+        v = Math.min(pd.max, Math.max(pd.min, v + (sum / n) * (pd.max - pd.min)));
+      }
+      node.eff[pd.name] = v;
+    }
   }
 
   noteOn(note: number, velocity = 1): void {
@@ -113,11 +130,12 @@ export class Engine {
           const dst = node.inp[s.port];
           for (let i = 0; i < n; i++) dst[i] += src[i];
         }
-        const ctx: Ctx = { sr: this.sampleRate, n, inp: node.inp, out: node.out, connected: node.connected, p: node.params, voice: this.voice };
+        this.applyCv(node, n);
+        const ctx: Ctx = { sr: this.sampleRate, n, inp: node.inp, out: node.out, connected: node.connected, p: node.eff, voice: this.voice };
         node.impl.process(ctx, node.state);
       }
       for (const o of this.outputs) {
-        const lvl = o.params.level ?? 1;
+        const lvl = o.eff.level ?? 1;
         const l = o.inp.l;
         const r = o.connected.r ? o.inp.r : o.inp.l;
         for (let i = 0; i < n; i++) {

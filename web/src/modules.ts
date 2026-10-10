@@ -52,7 +52,7 @@ function polyBlep(t: number, dt: number): number {
   return 0;
 }
 
-function wave(kind: number, phase: number, dt: number): number {
+function wave(kind: number, phase: number, dt: number, pw = 0.5): number {
   switch (kind) {
     case 0:
       return Math.sin(2 * Math.PI * phase);
@@ -61,9 +61,9 @@ function wave(kind: number, phase: number, dt: number): number {
     case 2:
       return 2 * phase - 1 - polyBlep(phase, dt);
     default: {
-      let v = phase < 0.5 ? 1 : -1;
+      let v = phase < pw ? 1 : -1;
       v += polyBlep(phase, dt);
-      v -= polyBlep((phase + 0.5) % 1, dt);
+      v -= polyBlep((phase + 1 - pw) % 1, dt);
       return v;
     }
   }
@@ -79,6 +79,31 @@ const midi: ModuleImpl<null> = {
   },
 };
 
+/**
+ * The FM-1 front panel as a module: the 27 note keys (pitch/gate/velocity, octave buttons applied),
+ * and encoders 1-4 as 0..1 values. In the browser the panel is the module's own sliders; on the
+ * device the encoders feed the same outputs.
+ */
+const N_KNOBS = 4;
+const knobNames = Array.from({ length: N_KNOBS }, (_, i) => `k${i + 1}`);
+
+const fm1: ModuleImpl<null> = {
+  def: {
+    type: 'fm1',
+    label: 'FM-1 panel',
+    inputs: [],
+    outputs: [control('pitch'), gate('gate'), control('vel'), ...knobNames.map(control)],
+    params: [...knobNames.map((n) => param(n, 0, 1, 0.5, { step: 0.01 }))],
+  },
+  init: () => null,
+  process(c) {
+    c.out.pitch.fill(c.voice.pitch, 0, c.n);
+    c.out.gate.fill(c.voice.gate, 0, c.n);
+    c.out.vel.fill(c.voice.velocity, 0, c.n);
+    for (const n of knobNames) c.out[n].fill(c.p[n] ?? 0, 0, c.n);
+  },
+};
+
 const osc: ModuleImpl<{ phase: number }> = {
   def: {
     type: 'osc',
@@ -87,6 +112,7 @@ const osc: ModuleImpl<{ phase: number }> = {
     outputs: [audio('out')],
     params: [
       param('wave', 0, 3, 0, { step: 1, choices: WAVES }),
+      param('pw', 0.05, 0.95, 0.5, { step: 0.01 }),
       param('coarse', -48, 48, 0, { step: 1, unit: 'st' }),
       param('fine', -100, 100, 0, { step: 1, unit: 'ct' }),
       param('pm', 0, 8, 0, { step: 0.01 }),
@@ -96,6 +122,7 @@ const osc: ModuleImpl<{ phase: number }> = {
   init: () => ({ phase: 0 }),
   process(c, s) {
     const { pitch, pm } = c.inp;
+    const pw = Math.min(0.95, Math.max(0.05, c.p.pw ?? 0.5));
     const base = (c.p.coarse ?? 0) / 12 + (c.p.fine ?? 0) / 1200;
     const kind = Math.round(c.p.wave ?? 0);
     const idx = c.p.pm ?? 0;
@@ -111,27 +138,35 @@ const osc: ModuleImpl<{ phase: number }> = {
         ph += (idx * pm[i]) / (2 * Math.PI);
         ph -= Math.floor(ph);
       }
-      out[i] = wave(kind, ph, dt) * lvl;
+      out[i] = wave(kind, ph, dt, pw) * lvl;
     }
   },
 };
 
-const lfo: ModuleImpl<{ phase: number }> = {
+const LFO_WAVES = [...WAVES, 'S&H'];
+
+const lfo: ModuleImpl<{ phase: number; seed: number; held: number }> = {
   def: {
     type: 'lfo',
     label: 'LFO',
     inputs: [],
     outputs: [control('out')],
-    params: [param('wave', 0, 3, 0, { step: 1, choices: WAVES }), param('rate', 0.02, 40, 4, { unit: 'Hz', step: 0.01 }), param('depth', 0, 1, 1, { step: 0.01 })],
+    params: [param('wave', 0, 4, 0, { step: 1, choices: LFO_WAVES }), param('rate', 0.02, 40, 4, { unit: 'Hz', step: 0.01 }), param('depth', 0, 1, 1, { step: 0.01 })],
   },
-  init: () => ({ phase: 0 }),
+  init: () => ({ phase: 0, seed: 0x2545f491, held: 0 }),
   process(c, s) {
     const dt = (c.p.rate ?? 1) / c.sr;
     const kind = Math.round(c.p.wave ?? 0);
+    const depth = c.p.depth ?? 1;
     for (let i = 0; i < c.n; i++) {
       s.phase += dt;
-      if (s.phase >= 1) s.phase -= 1;
-      c.out.out[i] = wave(kind, s.phase, dt) * (c.p.depth ?? 1);
+      if (s.phase >= 1) {
+        s.phase -= 1;
+        // sample & hold: new random value (-1..1) at every cycle start
+        s.seed = (Math.imul(s.seed, 1664525) + 1013904223) >>> 0;
+        s.held = s.seed / 0x80000000 - 1;
+      }
+      c.out.out[i] = (kind === 4 ? s.held : wave(kind, s.phase, dt)) * depth;
     }
   },
 };
@@ -329,8 +364,12 @@ const output: ModuleImpl<null> = {
   },
 };
 
-export const IMPLS: Record<string, ModuleImpl> = Object.fromEntries(
-  [midi, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, output].map((m) => [m.def.type, m as ModuleImpl]),
-);
+const ALL = [midi, fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, output];
+
+/** Every parameter (except the FM-1 panel's own controls) gets a control input `<name>_cv`: the effective value is base + cv * (max - min), clamped. */
+export const cvPort = (param: string): string => `${param}_cv`;
+for (const m of ALL) for (const p of m.def.params) if (m.def.type !== 'fm1') m.def.inputs.push({ name: cvPort(p.name), kind: 'control', param: p.name });
+
+export const IMPLS: Record<string, ModuleImpl> = Object.fromEntries(ALL.map((m) => [m.def.type, m as ModuleImpl]));
 
 export const DEFS: Record<string, ModuleDef> = Object.fromEntries(Object.values(IMPLS).map((m) => [m.def.type, m.def]));

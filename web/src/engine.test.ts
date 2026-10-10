@@ -101,6 +101,69 @@ describe('engine', () => {
     expect(rms(render(e, 4800).l)).toBeLessThan(1e-3);
   });
 
+  it('303 Acid preset is finite, audible and not clipping', () => {
+    const e = new Engine(SR);
+    e.load(PRESETS['303 Acid']());
+    e.noteOn(36);
+    const { l } = render(e, SR);
+    expect(l.every(Number.isFinite)).toBe(true);
+    expect(rms(l)).toBeGreaterThan(0.01);
+    expect(Math.max(...l.map(Math.abs))).toBeLessThan(2);
+  });
+
+  it('LFO sample & hold and osc pulse width run and stay finite', () => {
+    const p = emptyPatch();
+    const lfo = addModule(p, DEFS.lfo, 0, 0);
+    lfo.params.wave = 4;
+    lfo.params.rate = 20;
+    const osc = addModule(p, DEFS.osc, 0, 0);
+    Object.assign(osc.params, { wave: 3, pw: 0.2, level: 1 });
+    const out = addModule(p, DEFS.output, 0, 0);
+    expect(connect(p, DEFS, { module: lfo.id, port: 'out' }, { module: osc.id, port: 'pw_cv' })).toBe(true);
+    expect(connect(p, DEFS, { module: osc.id, port: 'out' }, { module: out.id, port: 'l' })).toBe(true);
+    const e = new Engine(SR);
+    e.load(p);
+    const { l } = render(e, SR / 2);
+    expect(l.every(Number.isFinite)).toBe(true);
+    expect(rms(l)).toBeGreaterThan(0.1);
+  });
+
+  it('every parameter has a CV input that modulates it', () => {
+    for (const d of Object.values(DEFS).filter((x) => x.type !== 'fm1')) for (const pd of d.params) expect(d.inputs.some((i) => i.param === pd.name && i.name === `${pd.name}_cv`)).toBe(true);
+    const build = (patched: boolean) => {
+      const p = emptyPatch();
+      const osc = addModule(p, DEFS.osc, 0, 0);
+      osc.params.level = 0;
+      const k = addModule(p, DEFS.const, 0, 0);
+      k.params.value = 0.5;
+      const out = addModule(p, DEFS.output, 0, 0);
+      connect(p, DEFS, { module: osc.id, port: 'out' }, { module: out.id, port: 'l' });
+      if (patched) expect(connect(p, DEFS, { module: k.id, port: 'out' }, { module: osc.id, port: 'level_cv' })).toBe(true);
+      const e = new Engine(SR);
+      e.load(p);
+      return rms(render(e, 4800).l);
+    };
+    expect(build(false)).toBeLessThan(1e-6);
+    expect(build(true)).toBeGreaterThan(0.1);
+  });
+
+  it('FM-1 panel module outputs keys and knobs', () => {
+    const p = emptyPatch();
+    const panel = addModule(p, DEFS.fm1, 0, 0);
+    Object.assign(panel.params, { k3: 0.25 });
+    const osc = addModule(p, DEFS.osc, 0, 0);
+    const out = addModule(p, DEFS.output, 0, 0);
+    expect(connect(p, DEFS, { module: panel.id, port: 'pitch' }, { module: osc.id, port: 'pitch' })).toBe(true);
+    expect(connect(p, DEFS, { module: panel.id, port: 'k3' }, { module: osc.id, port: 'level_cv' })).toBe(true);
+    expect(connect(p, DEFS, { module: osc.id, port: 'out' }, { module: out.id, port: 'l' })).toBe(true);
+    const e = new Engine(SR);
+    e.load(p);
+    e.noteOn(69);
+    const { l } = render(e, SR);
+    expect(l.every(Number.isFinite)).toBe(true);
+    expect(rms(l)).toBeGreaterThan(0.05);
+  });
+
   it('keeps running state when the patch is edited, but not output order assumptions', () => {
     const e = new Engine(SR);
     const p = PRESETS['Subtractive saw']();

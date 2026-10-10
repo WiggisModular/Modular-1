@@ -46,7 +46,8 @@ main { padding: 12px 16px 32px; }
 .dot.audio { color: var(--audio); } .dot.control { color: var(--control); } .dot.gate { color: var(--gate); }
 .dot:hover { background: currentColor; }
 .params { padding: 4px 8px 8px; display: grid; gap: 4px; border-top: 1px solid var(--line); }
-.param { display: grid; grid-template-columns: 1fr auto; font-size: 12px; }
+.param { display: grid; grid-template-columns: auto 1fr auto; align-items: center; column-gap: 6px; font-size: 12px; }
+.param .cvjack { gap: 0; }
 .param input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
 .param output { color: var(--muted); }
 .hint { margin-top: 8px; }

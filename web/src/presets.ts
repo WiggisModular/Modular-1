@@ -19,6 +19,26 @@ function make(name: string, build: Build): Patch {
 }
 
 export const PRESETS: Record<string, () => Patch> = {
+  '303 Acid': () =>
+    make('303 Acid', (add, wire) => {
+      const kb = add('midi', 20, 40);
+      const osc = add('osc', 220, 20, { wave: 2, coarse: -12, level: 0.9 });
+      const fenv = add('adsr', 220, 430, { a: 0.001, d: 0.22, s: 0, r: 0.1 });
+      const flt = add('filter', 440, 20, { cutoff: 180, res: 0.88, cvamt: 3.2 });
+      const aenv = add('adsr', 440, 430, { a: 0.002, d: 0.15, s: 0.8, r: 0.07 });
+      const vca = add('vca', 660, 20, { gain: 1.1 });
+      const dly = add('delay', 660, 430, { time: 375, fb: 0.35, mix: 0.25 });
+      const out = add('output', 880, 40);
+      wire(kb, 'pitch', osc, 'pitch');
+      wire(osc, 'out', flt, 'in');
+      wire(kb, 'gate', fenv, 'gate');
+      wire(fenv, 'env', flt, 'cv');
+      wire(kb, 'gate', aenv, 'gate');
+      wire(flt, 'lp', vca, 'in');
+      wire(aenv, 'env', vca, 'cv');
+      wire(vca, 'out', dly, 'in');
+      wire(dly, 'out', out, 'l');
+    }),
   'Subtractive saw': () =>
     make('Subtractive saw', (add, wire) => {
       const kb = add('midi', 20, 40);

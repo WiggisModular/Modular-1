@@ -104,7 +104,7 @@ export class Editor {
     body.className = 'mbody';
     const ins = document.createElement('div');
     ins.className = 'ports in';
-    for (const p of def.inputs) ins.append(this.port(m, p, 'in'));
+    for (const p of def.inputs) if (!p.param) ins.append(this.port(m, p, 'in'));
     const outs = document.createElement('div');
     outs.className = 'ports out';
     for (const p of def.outputs) outs.append(this.port(m, p, 'out'));
@@ -135,6 +135,14 @@ export class Editor {
         val.textContent = fmt(v);
         this.ev.onParam(m.id, pd.name, v);
       };
+      const cv = def.inputs.find((p) => p.param === pd.name);
+      if (cv) {
+        const jack = this.port(m, cv, 'in');
+        jack.classList.add('cvjack');
+        jack.querySelector('span:not(.dot)')?.remove();
+        jack.title = `${pd.name} CV`;
+        row.append(jack);
+      }
       row.append(name, val, input);
       params.append(row);
     }

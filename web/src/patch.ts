@@ -6,6 +6,8 @@ export type SignalKind = 'audio' | 'control' | 'gate';
 export interface PortDef {
   name: string;
   kind: SignalKind;
+  /** set on the CV input of a parameter; names that parameter */
+  param?: string;
 }
 
 export interface ParamDef {

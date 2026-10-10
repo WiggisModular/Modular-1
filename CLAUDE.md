@@ -14,6 +14,14 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**, with a browser app
 - `npm test` (vitest, 10 tests), `npm run build`, `npm run dev` all pass. The built app was smoke-tested in headless Chromium: audio worklet produces sound on key down, silent after release, cable drag/remove works.
 - `firmware/hal`, `firmware/loader`, `firmware/crt0.S`, `firmware/app.ld`, `tools/*` are **unmodified copies** from Felucca. There is **no `firmware/src/`**, so `tools/build.py` cannot run yet.
 
+## Added since milestone 1 (web only, tests pass: 14)
+
+- Preset `303 Acid`; osc `pw` (pulse width); LFO wave `S&H`.
+- Every param has a CV input `<param>_cv` (`cvPort` in `modules.ts`): effective = base + mean(cv over block) * (max-min), clamped, applied per block in `Engine.applyCv`. Exception: module `fm1`.
+- Module `fm1` ("FM-1 panel"): pitch/gate/vel plus knobs k1..k4 (sliders on the card). Buttons and the other 3 encoders were deliberately left out.
+- A single-file HTML build was tried and reverted at the user's request; the build stays multi-file.
+- Firmware build was attempted: blocked on macOS (no Docker, toolchain is Linux x86-64), no `firmware/src/`, no SDK files. The user moves to a Linux box, so step 1 below can run natively.
+
 ## Not verified — do not claim otherwise
 
 - The flash tab and installer have never run against a real FM-1 in this project.
