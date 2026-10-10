@@ -13,6 +13,9 @@
  * silent). Resets all module state. Never call while eng_render runs (stop the audio ISR's call first). */
 int eng_load(const uint8_t *p, uint32_t len);
 void eng_set_param(uint32_t module, uint32_t param, int32_t q16);
+int32_t eng_get_param(uint32_t module, uint32_t param);
+/* index of the first module of a type (defs.h T_*), -1 if the patch has none */
+int eng_find(uint32_t type);
 void eng_note_on(uint32_t note, int32_t vel_q16);
 void eng_note_off(uint32_t note);
 void eng_all_notes_off(void);

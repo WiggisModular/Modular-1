@@ -301,6 +301,22 @@ void eng_set_param(uint32_t module, uint32_t param, int32_t q16)
         E.node[module].par[param] = q16;
 }
 
+int32_t eng_get_param(uint32_t module, uint32_t param)
+{
+    return module < E.nmod && param < DEFS[E.node[module].type].npar ? E.node[module].par[param] : 0;
+}
+
+int eng_find(uint32_t type)
+{
+    uint32_t i;
+    if (!E.loaded)
+        return -1;
+    for (i = 0; i < E.nmod; i++)
+        if (E.node[i].type == type)
+            return (int)i;
+    return -1;
+}
+
 /* ------------------------------------------------------------------ voice (mono, last note priority) */
 
 static void update_voice(void)

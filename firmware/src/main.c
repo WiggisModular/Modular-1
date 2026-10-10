@@ -58,6 +58,7 @@ static void fm1_fault(const fm1_crash_t *c)
     fm1_reboot();
 }
 
+static int32_t enc_acc[7];                       /* detent steps per encoder since boot (shown on the LCD: diagnostics) */
 static uint32_t cur_preset;
 static int load_err;
 static const char *patch_label = "";
@@ -83,6 +84,55 @@ static void status_draw(void)                   /* the patch name and the engine
         *p++ = ' ';
     *p = 0;
     text5x7(12, 150, line, 2, C_FG, C_BG);
+    {   /* the panel knobs of an FM-1 panel module */
+        char kn[32], *q = kn;
+        int fm = eng_find(T_FM1);
+        uint32_t k;
+        if (fm < 0) {
+            for (s = "NO FM-1 PANEL MODULE: KNOBS OFF"; *s;)
+                *q++ = *s++;
+        } else {
+            for (k = 0; k < 4u; k++) {
+                *q++ = 'K';
+                *q++ = (char)('1' + k);
+                *q++ = ' ';
+                fmt_int(num, (eng_get_param((uint32_t)fm, FM1_P_K1 + k) + 328) / 655);
+                for (s = num; *s;)
+                    *q++ = *s++;
+                *q++ = ' ';
+                if (k < 3u)
+                    *q++ = ' ';
+            }
+        }
+        while (q < kn + 31)
+            *q++ = ' ';
+        *q = 0;
+        text5x7(12, 176, kn, 1, C_FG, C_BG);
+    }
+    {   /* every encoder: detent steps / raw transitions since boot (a dead knob shows 0/0) */
+        char ln[32], *q;
+        uint32_t e, row;
+        for (row = 0; row < 3u; row++) {
+            q = ln;
+            for (e = row * 3u; e < row * 3u + 3u && e < 7u; e++) {
+                *q++ = (char)('0' + e);
+                *q++ = ':';
+                fmt_int(num, enc_acc[e]);
+                for (s = num; *s;)
+                    *q++ = *s++;
+                *q++ = '/';
+                fmt_int(num, (int32_t)fm1_in_stat.enc_moves[e]);
+                for (s = num; *s;)
+                    *q++ = *s++;
+                *q++ = ' ';
+                *q++ = ' ';
+            }
+            while (q < ln + 28)
+                *q++ = ' ';
+            *q = 0;
+            text5x7(12, 200u + 9u * row, ln, 1, 0x07E0u, C_BG);
+        }
+    }
 }
 
 static void screen_idle(void)
@@ -101,7 +151,6 @@ static void screen_idle(void)
     } else {
         text5x7(12, 120, patch_label, 2, C_FG, C_BG);
     }
-    text5x7(12, 190, "KEYS + MIDI. PROGRAM CHANGE: PATCH", 1, C_FG, C_BG);
     status_draw();
 }
 
@@ -202,6 +251,31 @@ static void master_boot(void)
     }
 }
 
+/* The four knobs (encoders 2..5 in Felucca's panel table: K1..K4) move the k1..k4 parameters of the patch's FM-1
+ * panel module: a click is 0.01 of the range, 0.05 when turned fast. The values are written into the stored copy
+ * too (STORE keeps them). */
+static void knobs_poll(void)
+{
+    static uint32_t last_ms[4];
+    int32_t st[7];
+    int fm = eng_find(T_FM1);
+    uint32_t k;
+    for (k = 0; k < 7u; k++) {
+        st[k] = fm1_enc_take(k);
+        enc_acc[k] += st[k];
+    }
+    for (k = 0; k < 4u; k++) {
+        int32_t s = st[2u + k], v;
+        if (!s || fm < 0)
+            continue;
+        v = eng_get_param((uint32_t)fm, FM1_P_K1 + k) + s * (fm1_ms - last_ms[k] < 80u ? 3277 : 655);
+        v = v < 0 ? 0 : v > 65536 ? 65536 : v;
+        last_ms[k] = fm1_ms;
+        eng_set_param((uint32_t)fm, FM1_P_K1 + k, v);
+        m1_patch_param((uint32_t)fm, FM1_P_K1 + k, v);
+    }
+}
+
 static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F3 = MIDI 53) -> the engine */
 {
     static uint32_t prev;
@@ -244,6 +318,7 @@ static void fm1_main(void)
         }
         midi_drain();
         keys_poll();
+        knobs_poll();
         master_poll();
         {
             static uint32_t t_stat;

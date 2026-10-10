@@ -93,4 +93,26 @@ export const PRESETS: Record<string, () => Patch> = {
       wire(env, 'env', vca, 'cv');
       wire(vca, 'out', out, 'l');
     }),
+  'FM-1 Panel synth': () =>
+    make('FM-1 Panel synth', (add, wire) => {
+      // the FM-1's own keys and the four knobs: K1 cutoff, K2 resonance, K3 delay mix, K4 delay time
+      const fm = add('fm1', 20, 40, { k1: 0.5, k2: 0.4, k3: 0.25, k4: 0.35 });
+      const osc = add('osc', 260, 20, { wave: 2, level: 0.8 });
+      const env = add('adsr', 260, 430, { a: 0.005, d: 0.25, s: 0.6, r: 0.25 });
+      const flt = add('filter', 480, 20, { cutoff: 20, res: 0, cvamt: 0 });
+      const vca = add('vca', 700, 20);
+      const dly = add('delay', 700, 430, { time: 1, fb: 0.4, mix: 0 });
+      const out = add('output', 920, 40);
+      wire(fm, 'pitch', osc, 'pitch');
+      wire(fm, 'gate', env, 'gate');
+      wire(osc, 'out', flt, 'in');
+      wire(fm, 'k1', flt, 'cutoff_cv');
+      wire(fm, 'k2', flt, 'res_cv');
+      wire(flt, 'lp', vca, 'in');
+      wire(env, 'env', vca, 'cv');
+      wire(vca, 'out', dly, 'in');
+      wire(fm, 'k3', dly, 'mix_cv');
+      wire(fm, 'k4', dly, 'time_cv');
+      wire(dly, 'out', out, 'l');
+    }),
 };

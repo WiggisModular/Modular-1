@@ -8,6 +8,7 @@
   tools/m1_link.py store
   tools/m1_link.py param MODULE PARAM VALUE     (module / parameter index, value as a float)
   tools/m1_link.py note 60 [seconds]
+  tools/m1_link.py program N              (factory patch N, MIDI program change)
 Needs mido and python-rtmidi (the Nix dev shell has them).
 """
 import sys
@@ -114,6 +115,8 @@ def main():
     elif a[0] == "param":
         v = int(round(float(a[3]) * 65536)) & 0xFFFFFFFF
         link.out.send(frame(0x20, [int(a[1]), int(a[2]), v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, v >> 24]))
+    elif a[0] == "program":
+        link.out.send(mido.Message("program_change", program=int(a[1])))
     elif a[0] == "note":
         link.out.send(mido.Message("note_on", note=int(a[1]), velocity=100))
         time.sleep(float(a[2]) if len(a) > 2 else 1.0)
