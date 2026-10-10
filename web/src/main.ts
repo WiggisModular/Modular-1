@@ -3,6 +3,7 @@ import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
 import { DeviceLink } from './device';
 import { Editor } from './editor';
+import { buildBankTab } from './bank';
 import { buildFlashTab } from './flasher';
 import { attachKeyboard, attachMidi } from './input';
 import { DEFS } from './modules';
@@ -187,6 +188,10 @@ attachMidi(sink, (s) => {
 });
 
 // tabs
+buildBankTab($('tab-presets'), device, () => editor.patch, (msg) => {
+  devStatus(msg);
+  for (const id of ['dev-live', 'dev-send', 'dev-store']) $<HTMLInputElement>(id).disabled = false;
+});
 buildFlashTab($('tab-flash'));
 $('tab-about').innerHTML = `
   <div class="card"><h2>Modular-1</h2>
@@ -200,3 +205,6 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('#tabs button')) {
     if (currentTab === 'patch') editor.drawCables();
   };
 }
+
+// open the tab named in the address (#presets, #flash, #about)
+document.querySelector<HTMLButtonElement>(`#tabs button[data-tab="${location.hash.slice(1)}"]`)?.click();

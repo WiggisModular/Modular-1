@@ -237,21 +237,116 @@ static int m1_store(const uint8_t *patch, uint32_t len)
     }
 }
 
+/* The preset list the PRESET knob and MIDI program change step through: the preset bank if the editor uploaded one
+ * (the occupied flash slots in slot order), else the factory presets compiled into the firmware. */
+static uint32_t popcount32(uint32_t v)
+{
+    uint32_t n = 0;
+    for (; v; v &= v - 1u)
+        n++;
+    return n;
+}
+static uint32_t list_count(void) { return bank_mask ? popcount32(bank_mask) : N_PRESETS; }
+static uint32_t list_slot(uint32_t idx)             /* slot number of the idx-th occupied slot */
+{
+    uint32_t s;
+    for (s = 0; s < M1_SLOTS; s++)
+        if ((bank_mask >> s & 1u) && idx-- == 0u)
+            return s;
+    return 0;
+}
+
+static char label_buf[40];
+
 static void preset_load(uint32_t n)
 {
-    if (n >= N_PRESETS)
+    static uint8_t bank_buf[M1_PATCH_MAX];
+    uint32_t count = list_count(), len = 0;
+    const uint8_t *data;
+    const char *name;
+    char slot_name[M1_NAME + 1], *p = label_buf, num[12];
+    if (n >= count)
         return;
-    if (m1_apply(PRESET_LIST[n].data, PRESET_LIST[n].len) == 0)
-        m1_set_current(PRESET_LIST[n].data, PRESET_LIST[n].len);
+    if (bank_mask) {
+        if (sl_read(list_slot(n), bank_buf, &len, slot_name))
+            return;
+        data = bank_buf;
+        name = slot_name;
+    } else {
+        data = PRESET_LIST[n].data;
+        len = PRESET_LIST[n].len;
+        name = PRESET_LIST[n].name;
+    }
+    if (m1_apply(data, len) == 0)
+        m1_set_current(data, len);
     cur_preset = n;
-    patch_label = PRESET_LIST[n].name;
+    if (n + 1u < 10u)
+        *p++ = '0';
+    fmt_int(num, (int32_t)n + 1);
+    p = put(p, num);
+    *p++ = '/';
+    if (count < 10u)
+        *p++ = '0';
+    fmt_int(num, (int32_t)count);
+    p = put(p, num);
+    *p++ = ' ';
+    p = put(p, name);
+    *p = 0;
+    patch_label = label_buf;
     screen_idle();
+}
+
+static void preset_step(int32_t d)                  /* the PRESET knob */
+{
+    int32_t n = (int32_t)list_count(), i = ((int32_t)cur_preset + d) % n;
+    preset_load((uint32_t)(i < 0 ? i + n : i));
+}
+
+/* proto.c hooks: the preset bank */
+static int m1_slot_write(uint32_t slot, const char *name, const uint8_t *p, uint32_t len)
+{
+    uint8_t was = eng_run;
+    int rc;
+    if (!flash_ok)
+        return -1;
+    eng_run = 0;                                /* the erase and program windows have the IRQs off */
+    rc = sl_write(slot, name, p, len);
+    eng_run = was;
+    if (cur_preset >= list_count())
+        cur_preset = 0;
+    return rc;
+}
+static int m1_slot_erase(uint32_t slot)
+{
+    uint8_t was = eng_run;
+    int rc;
+    if (!flash_ok)
+        return -1;
+    eng_run = 0;
+    rc = sl_erase(slot);
+    eng_run = was;
+    if (cur_preset >= list_count())
+        cur_preset = 0;
+    return rc;
+}
+static int m1_slot_info(uint32_t slot, char *name, uint32_t *len)
+{
+    sl_hdr_t h;
+    uint32_t i;
+    if (!flash_ok || !(bank_mask >> slot & 1u) || sl_head(slot, &h, 0))
+        return 0;
+    *len = h.len;
+    for (i = 0; i < M1_NAME; i++)
+        name[i] = h.name[i];
+    return 1;
 }
 
 static void patch_boot(void)                    /* the stored patch if there is one, else the first factory patch */
 {
     static uint8_t buf[M1_PATCH_MAX];
     uint32_t len, seq, sector;
+    if (flash_ok)
+        sl_scan();
     if (flash_ok && ps_load(buf, &len, &seq, &sector) == 0 && m1_apply(buf, len) == 0) {
         m1_set_current(buf, len);
         patch_label = "STORED PATCH";
@@ -274,7 +369,7 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
         } else if (st == 0xB0u && n == 123u) {
             eng_all_notes_off();
         } else if (st == 0xC0u) {
-            preset_load((pkt >> 16) & 0x7Fu);   /* program change: the factory patches */
+            preset_load((pkt >> 16) & 0x7Fu);   /* program change: a preset of the list */
         }
     }
     midi_in_overflow = 0;
@@ -318,6 +413,10 @@ static void knobs_poll(void)
     uint32_t k, j, n = (uint32_t)eng_nmodules();
     for (k = 0; k < 7u; k++)
         st[k] = fm1_enc_take(k);
+    if (st[6]) {
+        preset_step(st[6]);
+        return;
+    }
     if (!n)
         return;
     if (sel >= n)

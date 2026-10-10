@@ -8,7 +8,7 @@
 #define FELUCCA_ID "FM-1_800"    /* package identity (build.py: the .fwsc marker string) */
 #endif
 #ifndef FELUCCA_VERSION
-#define FELUCCA_VERSION "M1-0.7"
+#define FELUCCA_VERSION "M1-0.8"
 #endif
 #define FELUCCA_FLASH 1
 #define FELUCCA_OTA 1
@@ -50,8 +50,12 @@ static int m1_apply(const uint8_t *patch, uint32_t len);       /* main.c: the ho
 static int m1_store(const uint8_t *patch, uint32_t len);
 static int m1_flash_ok(void);
 static void m1_send(const uint8_t *f, uint32_t n);
+static int m1_slot_write(uint32_t slot, const char *name, const uint8_t *p, uint32_t len);
+static int m1_slot_erase(uint32_t slot);
+static int m1_slot_info(uint32_t slot, char *name, uint32_t *len);
 #include "proto.c"
 #include "patchstore.c"
+#include "slotstore.c"
 #ifdef M1_BENCH
 #include "bench.c"
 #endif

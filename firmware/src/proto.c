@@ -6,6 +6,9 @@
  *   static int  m1_store(const uint8_t *patch, uint32_t len);   write it to flash, 0 = ok
  *   static int  m1_flash_ok(void);
  *   static void m1_send(const uint8_t *f, uint32_t n);          a full F0 .. F7 message to the host
+ *   static int  m1_slot_write(uint32_t slot, const char *name, const uint8_t *p, uint32_t len);   preset bank: 0 = ok
+ *   static int  m1_slot_erase(uint32_t slot);
+ *   static int  m1_slot_info(uint32_t slot, char *name, uint32_t *len);                          1 = the slot holds a preset
  * and calls m1_handle() with every received frame (the bytes between F0 and F7). */
 #include "engine.h"
 #include "defs.h"
@@ -13,7 +16,9 @@
 #define M1_PATCH_MAX 3072u
 #define M1_VERSION 1
 
-enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, R_ACK = 0x40, R_INFO = 0x41 };
+enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42 };
+#define M1_SLOTS 32u
+#define M1_NAME 20u
 enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE };
 
 static uint8_t m1_up[M1_PATCH_MAX], m1_cur[M1_PATCH_MAX];
@@ -66,7 +71,7 @@ static uint32_t m1_pack7(const uint8_t *in, uint32_t n, uint8_t *out)
 
 static void m1_reply(uint32_t cmd, const uint8_t *payload, uint32_t n)
 {
-    uint8_t f[40];
+    uint8_t f[48];
     uint32_t w = 0;
     f[w++] = 0xF0;
     f[w++] = 0x7D;
@@ -138,6 +143,26 @@ static void m1_patch_att(uint32_t mod, uint32_t input, int32_t v)
     if (!at || input >= 2u || DEFS[m1_cur[at]].cvbase < 0)
         return;
     m1_put32(at + 1u + 4u * DEFS[m1_cur[at]].npar + 4u * input, v);
+}
+
+/* a patch binary that eng_load would at least not reject for its framing: header, record sizes add up to the length */
+static int m1_valid(const uint8_t *p, uint32_t len)
+{
+    uint32_t at = 8, i, nmod, ncab;
+    if (len < 8u || p[0] != 0xA1 || p[1] != ENG_PATCH_VERSION)
+        return 0;
+    nmod = p[2];
+    ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8;
+    if (nmod > 32u || ncab > 192u)
+        return 0;
+    for (i = 0; i < nmod; i++) {
+        const def_t *d;
+        if (at >= len || p[at] >= N_TYPES)
+            return 0;
+        d = &DEFS[p[at]];
+        at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 14u : 0u);
+    }
+    return at + 4u * ncab == len;
 }
 
 /* f: the bytes between F0 and F7. Returns 1 if the frame was ours (and is consumed). */
@@ -232,6 +257,61 @@ static int m1_handle(const uint8_t *f, uint32_t n)
             m1_patch_param(d[0], d[1], v);
         }
         break;
+    case C_SLOT: {                                           /* the uploaded patch into preset slot n, without loading it */
+        uint32_t slot, total, crc, i;
+        char name[M1_NAME + 1];
+        if (len < 1u + M1_NAME + 4u) {
+            m1_ack(C_SLOT, 0, S_RANGE, 0);
+            break;
+        }
+        slot = d[0];
+        for (i = 0; i < M1_NAME; i++)
+            name[i] = (char)(d[1 + i] >= 32u && d[1 + i] < 127u ? d[1 + i] : 0);
+        name[M1_NAME] = 0;
+        total = (uint32_t)d[1 + M1_NAME] | (uint32_t)d[2 + M1_NAME] << 8;
+        crc = (uint32_t)d[3 + M1_NAME] | (uint32_t)d[4 + M1_NAME] << 8;
+        if (slot >= M1_SLOTS || total != m1_up_total || total != m1_up_got || total < 8u) {
+            m1_ack(C_SLOT, slot, S_RANGE, 0);
+            break;
+        }
+        if (m1_crc16(m1_up, total) != crc) {
+            m1_ack(C_SLOT, slot, S_CRC, 0);
+            break;
+        }
+        if (!m1_valid(m1_up, total)) {
+            m1_ack(C_SLOT, slot, S_LOAD, 0);
+            break;
+        }
+        m1_ack(C_SLOT, slot, m1_slot_write(slot, name, m1_up, total) ? S_FLASH : S_OK, 0);
+        m1_up_got = m1_up_total = 0;
+        break;
+    }
+    case C_SLOT_ERASE:
+        if (len < 1u || d[0] >= M1_SLOTS)
+            m1_ack(C_SLOT_ERASE, 0, S_RANGE, 0);
+        else
+            m1_ack(C_SLOT_ERASE, d[0], m1_slot_erase(d[0]) ? S_FLASH : S_OK, 0);
+        break;
+    case C_SLOT_INFO: {
+        uint8_t r[4 + M1_NAME];
+        char name[M1_NAME + 1];
+        uint32_t n = 0, i, ok;
+        if (len < 1u || d[0] >= M1_SLOTS) {
+            m1_ack(C_SLOT_INFO, 0, S_RANGE, 0);
+            break;
+        }
+        for (i = 0; i <= M1_NAME; i++)
+            name[i] = 0;
+        ok = (uint32_t)m1_slot_info(d[0], name, &n);
+        r[0] = d[0];
+        r[1] = (uint8_t)ok;
+        r[2] = (uint8_t)n;
+        r[3] = (uint8_t)(n >> 8);
+        for (i = 0; i < M1_NAME; i++)
+            r[4 + i] = (uint8_t)name[i];
+        m1_reply(R_SLOT, r, sizeof r);
+        break;
+    }
     case C_ATT:
         if (len >= 6u) {
             int32_t v = (int32_t)((uint32_t)d[2] | (uint32_t)d[3] << 8 | (uint32_t)d[4] << 16 | (uint32_t)d[5] << 24);

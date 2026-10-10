@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
-import { chunkFrames, commitFrame, crc16, frame, pack7, paramFrame, parse, unpack7, CMD } from './protocol';
+import { chunkFrames, commitFrame, crc16, frame, pack7, paramFrame, parse, parseSlot, slotEraseFrame, slotFrame, slotInfoFrame, unpack7, CMD } from './protocol';
 
 describe('SysEx protocol', () => {
   it('packs and unpacks every length without loss and with 7-bit bytes only', () => {
@@ -45,5 +45,19 @@ describe('SysEx protocol', () => {
 
   it('encodes parameter values as signed Q16.16 little endian', () => {
     expect(parse(paramFrame(3, 1, -65536))!.payload).toEqual([3, 1, 0, 0, 0xff, 0xff]);
+  });
+
+  it('builds the preset bank commands', () => {
+    const patch = Uint8Array.from({ length: 200 }, (_, i) => i);
+    const p = parse(slotFrame(5, '303 Acid', patch))!;
+    expect(p.cmd).toBe(CMD.slot);
+    expect(p.payload[0]).toBe(5);
+    expect(String.fromCharCode(...p.payload.slice(1, 9))).toBe('303 Acid');
+    expect(p.payload.slice(9, 21).every((x) => x === 0)).toBe(true); // zero padded to 20 bytes
+    expect(p.payload.slice(21)).toEqual([200, 0, crc16(patch) & 0xff, crc16(patch) >> 8]);
+    expect(parse(slotEraseFrame(7))!.payload).toEqual([7]);
+    expect(parse(slotInfoFrame(31))!.payload).toEqual([31]);
+    const reply = frame(CMD.slotReply, [5, 1, 200, 0, ...Array.from('KICK', (c) => c.charCodeAt(0)), ...new Array(16).fill(0)]);
+    expect(parseSlot(parse(reply)!)).toEqual({ slot: 5, used: true, length: 200, name: 'KICK' });
   });
 });

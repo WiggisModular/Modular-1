@@ -11,15 +11,20 @@
 //   10 CHUNK    seq u8, offset u16, total u16, data  a piece of the binary patch (patchbin.ts), in order; ACK each
 //   11 COMMIT   total u16, crc16 u16                 check the assembled patch and switch to it; ACK
 //   12 STORE    -                                    write the current patch to flash; ACK
+//   13 SLOT     slot u8, name 20 bytes (ASCII, zero padded), total u16, crc16 u16   the uploaded chunks into preset slot n (0..31) of the
+//                                                    flash bank, without loading them; ACK (3 = not a valid patch)
+//   14 SLOT_ERASE  slot u8                           empty a slot; ACK
+//   15 SLOT_INFO   slot u8                           device answers SLOT_INFO (42)
 //   20 PARAM    module u8, param u8, value i32       live parameter change (Q16.16), no reply
 //   21 ATT      module u8, input u8 (0 p1, 1 p2), value i32   live attenuverter change (Q16.16, -1..1), no reply
 // device -> host
+//   42 SLOT    slot u8, used u8 (0/1), length u16, name 20 bytes
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded), delay lines
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store
 
 export const PREFIX = [0x7d, 0x4d, 0x31];
-export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, ack: 0x40, info: 0x41 } as const;
+export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42 } as const;
 export const PROTO_VERSION = 1;
 export const CHUNK_BYTES = 384;
 export const STATUS_TEXT = ['ok', 'bad offset or size', 'checksum mismatch', 'the firmware refused the patch', 'flash error', 'unknown command', 'nothing to store'];
@@ -102,6 +107,25 @@ export const paramFrame = (module: number, param: number, q16: number): Uint8Arr
   const v = q16 | 0;
   return frame(CMD.param, [module, param, v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff]);
 };
+
+export const SLOTS = 32;
+export const NAME_BYTES = 20;
+export const slotFrame = (slot: number, name: string, patch: Uint8Array, crc = crc16(patch)): Uint8Array => {
+  const n = Array.from({ length: NAME_BYTES }, (_, i) => (name.charCodeAt(i) >= 32 && name.charCodeAt(i) < 127 ? name.charCodeAt(i) : 0));
+  return frame(CMD.slot, [slot, ...n, patch.length & 0xff, patch.length >> 8, crc & 0xff, crc >> 8]);
+};
+export const slotEraseFrame = (slot: number): Uint8Array => frame(CMD.slotErase, [slot]);
+export const slotInfoFrame = (slot: number): Uint8Array => frame(CMD.slotInfo, [slot]);
+export interface SlotInfo {
+  slot: number;
+  used: boolean;
+  length: number;
+  name: string;
+}
+export const parseSlot = (p: Parsed): SlotInfo | null =>
+  p.cmd === CMD.slotReply && p.payload.length >= 4 + NAME_BYTES
+    ? { slot: p.payload[0], used: !!p.payload[1], length: p.payload[2] | (p.payload[3] << 8), name: String.fromCharCode(...p.payload.slice(4, 4 + NAME_BYTES).filter((c) => c >= 32 && c < 127)) }
+    : null;
 
 export const attFrame = (module: number, input: number, q16: number): Uint8Array => {
   const v = q16 | 0;

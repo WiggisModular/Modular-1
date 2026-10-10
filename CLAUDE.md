@@ -55,6 +55,12 @@ Benchmark (`firmware/src/bench.c`, numbers in docs/ARCHITECTURE.md): no FPU, flo
 - M1-0.7: the `midi` module is gone. Keys and USB MIDI feed the one voice, which only the `fm1` (FM-1 panel) module outputs (pitch/gate/vel + k1..k4); old patches with `midi` load as `fm1`. Binary patch format is now 3 (type indices moved). A patch needs an FM-1 panel module to be playable.
 - Factory patch "FM-1 Panel synth" uses p1/p2 of filter and delay with explicit matrices.
 
+## Preset bank + 32 factory presets (M1-0.8, host-tested; flash bank not yet run on the device)
+
+- `web/src/presets.ts`: 32 factory presets (5 original + 27 generated with `voice()` / `toOut()` helpers, all playing from the FM-1 panel module). `cd web && npm run export-defs` regenerates `firmware/src/presets.h` (all 32 are compiled into the firmware as fallback).
+- Bank in flash: `firmware/src/slotstore.c` (32 sectors at 0xA0000), protocol commands SLOT 0x13 / SLOT_ERASE 0x14 / SLOT_INFO 0x15 (reply 0x42), web page `web/src/bank.ts` (tab "Presets", list stored in localStorage `modular-1.bank`). Device: encoder 6 (PRESET) and program change step through the bank (or the factory list if the bank is empty); boot loads the STOREd patch if any, else entry 0.
+- Hazard I hit: never `git checkout <file>` on a file with uncommitted work (I lost presets.ts once and had to rewrite it).
+
 ## Not verified — do not claim otherwise
 
 - The flash tab and installer have never run against a real FM-1 in this project.

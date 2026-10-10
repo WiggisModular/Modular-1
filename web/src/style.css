@@ -66,3 +66,13 @@ main { padding: 12px 16px 32px; }
 pre.log { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; max-height: 240px; overflow: auto; white-space: pre-wrap; font: 12px/1.4 ui-monospace, monospace; }
 progress { width: 100%; }
 @media (max-width: 640px) { main { padding: 8px; } }
+
+.bank-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; max-width: 1100px; }
+.bank-cols .card { margin-bottom: 0; }
+.bank-list { display: grid; gap: 2px; max-height: 520px; overflow: auto; }
+.bank-row { display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 4px; }
+.bank-row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.bank-row .grow { flex: 1; }
+.bank-row > span:first-child:not(.slot) { flex: 1; }
+.bank-row .slot { color: var(--muted); font-variant-numeric: tabular-nums; width: 1.6em; }
+.bank-row button { padding: 0 8px; line-height: 1.5; }

@@ -6,7 +6,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { Engine } from '../src/engine';
 import { encodePatch, toQ16 } from '../src/patchbin';
 import { DEFS } from '../src/modules';
-import { attFrame, chunkFrames, commitFrame, paramFrame } from '../src/protocol';
+import { attFrame, chunkFrames, commitFrame, paramFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
 import { make, PRESETS, type Build } from '../src/presets';
 import type { Patch } from '../src/patch';
 
@@ -174,6 +174,11 @@ for (const [name, patch] of Object.entries(tests)) {
   const attVal = toQ16(-0.5);
   const frames = [...chunkFrames(bin, 50), commitFrame(bin), paramFrame(mod, par, val), attFrame(mod, 0, attVal)];
   writeFileSync(new URL('proto.syx', OUT), Buffer.concat(frames));
+  // preset bank: the patch into slot 5 as '303 ACID', an erase of slot 7 and an info request for slot 5, then a slot
+  // command with a wrong CRC (must be refused)
+  const bad = Uint8Array.from(bin);
+  const slotFrames = [...chunkFrames(bin, 90), slotFrame(5, '303 ACID', bin), slotInfoFrame(5), slotEraseFrame(7), ...chunkFrames(bad, 90), slotFrame(6, 'BAD', bad, 0x1234)];
+  writeFileSync(new URL('proto-slot.syx', OUT), Buffer.concat(slotFrames));
   writeFileSync(new URL('proto.args', OUT), `${mod} ${par} ${val} ${mod} 0 ${attVal}\n`);
 }
 console.log(`golden vectors for ${Object.keys(tests).length} patches in build/golden/`);

@@ -3,10 +3,11 @@
 import { DEFS } from './modules';
 import type { Patch } from './patch';
 import { encodePatch, toQ16 } from './patchbin';
-import { attFrame, chunkFrames, CMD, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+import { attFrame, chunkFrames, CMD, parseSlot, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 
 const NAME = /felucca|fm-?1|modular/i;
 const ACK_TIMEOUT = 700;
+const FLASH_TIMEOUT = 2500; // a flash sector erase and program
 const TRIES = 3;
 
 export class DeviceLink {
@@ -44,7 +45,7 @@ export class DeviceLink {
     return this.hello();
   }
 
-  private request(frame: Uint8Array, match: (p: ReturnType<typeof parse>) => boolean): Promise<NonNullable<ReturnType<typeof parse>>> {
+  private request(frame: Uint8Array, match: (p: ReturnType<typeof parse>) => boolean, timeout = ACK_TIMEOUT): Promise<NonNullable<ReturnType<typeof parse>>> {
     return new Promise((resolve, reject) => {
       let tries = 0;
       const attempt = (): void => {
@@ -53,7 +54,7 @@ export class DeviceLink {
           this.waiter = null;
           if (tries < TRIES) attempt();
           else reject(new Error('no answer from the FM-1'));
-        }, ACK_TIMEOUT);
+        }, timeout);
         this.waiter = {
           match,
           done: (p) => {
@@ -74,8 +75,8 @@ export class DeviceLink {
     return this.info;
   }
 
-  private async ackFor(frame: Uint8Array, cmd: number): Promise<Ack> {
-    const p = await this.request(frame, (x) => x?.cmd === CMD.ack && x.payload[0] === cmd);
+  private async ackFor(frame: Uint8Array, cmd: number, seq?: number, timeout = ACK_TIMEOUT): Promise<Ack> {
+    const p = await this.request(frame, (x) => x?.cmd === CMD.ack && x.payload[0] === cmd && (seq === undefined || x.payload[1] === seq), timeout);
     const a = parseAck(p)!;
     if (a.status) throw new Error(`FM-1: ${STATUS_TEXT[a.status] ?? `error ${a.status}`}${a.aux ? ` (${a.aux})` : ''}`);
     return a;
@@ -85,10 +86,46 @@ export class DeviceLink {
   upload(patch: Patch): Promise<void> {
     const run = async (): Promise<void> => {
       const bin = encodePatch(patch);
-      for (const f of chunkFrames(bin)) await this.ackFor(f, CMD.chunk);
+      await this.sendChunks(bin);
       await this.ackFor(commitFrame(bin), CMD.commit);
     };
     return this.serial(run);
+  }
+
+  private async sendChunks(bin: Uint8Array): Promise<void> {
+    const frames = chunkFrames(bin);
+    for (let i = 0; i < frames.length; i++) await this.ackFor(frames[i], CMD.chunk, i & 0x7f);
+  }
+
+  /** Put a patch into preset slot 0..31 of the FM-1's bank (flash); it is not loaded. */
+  uploadSlot(slot: number, name: string, patch: Patch): Promise<void> {
+    return this.serial(async () => {
+      const bin = encodePatch(patch);
+      await this.sendChunks(bin);
+      await this.ackFor(slotFrame(slot, name, bin), CMD.slot, slot, FLASH_TIMEOUT);
+    });
+  }
+
+  eraseSlot(slot: number): Promise<void> {
+    return this.serial(async () => {
+      await this.ackFor(slotEraseFrame(slot), CMD.slotErase, slot, FLASH_TIMEOUT);
+    });
+  }
+
+  readSlot(slot: number): Promise<SlotInfo> {
+    return this.serial(async () => {
+      const p = await this.request(slotInfoFrame(slot), (x) => x?.cmd === CMD.slotReply && x.payload[0] === slot);
+      const s = parseSlot(p);
+      if (!s) throw new Error('unexpected answer to SLOT_INFO');
+      return s;
+    });
+  }
+
+  /** all 32 slots of the bank */
+  async readBank(): Promise<SlotInfo[]> {
+    const out: SlotInfo[] = [];
+    for (let s = 0; s < SLOTS; s++) out.push(await this.readSlot(s));
+    return out;
   }
 
   store(): Promise<void> {
