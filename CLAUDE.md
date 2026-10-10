@@ -5,7 +5,7 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**, with a browser app
 ## Decisions already made with the user
 
 - **No FM engine and no Felucca features.** Only Felucca's flashing path and hardware layer (HAL, USB, update loader) are reused. GPL-3.0-only for the whole repo; keep Felucca's SPDX/copyright headers on copied files.
-- Own repo (this one), not the stikka repos. Work on branch `claude/nord-modular-fm1-webapp-cikr6h`; no PR unless asked.
+- Own repo (this one), not the stikka repos. The default branch is `main` (the work of `claude/nord-modular-fm1-webapp-cikr6h` and the dependabot bumps, vite 8 / vitest 5, were merged into it); GitHub Pages deploys from `main`. No PR unless asked.
 - Aftermarket firmwares exist: Felucca (`hugelton/Felucca`, GPL-3.0, source at commit `a4d7ca2e`), Sloop (installer only, no source found). Felucca is the reference; its source is the only documentation of the hardware.
 
 ## State (milestone 1 done, pushed)

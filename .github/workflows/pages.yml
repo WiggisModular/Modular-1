@@ -4,7 +4,7 @@ name: pages
 # One-time setup: repository Settings > Pages > Source: GitHub Actions.
 on:
   push:
-    branches: [main, claude/nord-modular-fm1-webapp-cikr6h]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
