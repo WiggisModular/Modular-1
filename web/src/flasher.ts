@@ -112,7 +112,7 @@ export function buildFlashTab(root: HTMLElement): void {
   installBtn.onclick = () =>
     run('install Modular-1', async () => {
       if (!bundle) throw new Error('no firmware package is bundled with this copy of the app');
-      const r = await fetch('./firmware/modular-1.fwsc', { cache: 'no-cache' });
+      const r = await fetch(`./firmware/modular-1.fwsc?v=${bundle.sha256}`, { cache: 'no-cache' });
       if (!r.ok) throw new Error('the bundled firmware package could not be loaded');
       const raw = new Uint8Array(await r.arrayBuffer());
       const sum = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', raw)), (b) => b.toString(16).padStart(2, '0')).join('');
