@@ -423,6 +423,8 @@ static void fm1_led_dim_level(uint32_t lo)
 static uint8_t fm1__dim_ph;
 #endif
 static uint16_t fm1__br_ph;                       /* the breath: frames into it (0 and 1023 dark, 512 the peak) */
+static uint8_t fm1_br_step = 1;                   /* the breath's speed for all breathing LEDs: 1, 2 or 4 frames a frame */
+static uint8_t fm1__br_n;                         /* free running frame count (the dither) */
 static uint16_t fm1__br_lv, fm1__br_acc;          /* this frame: the pulse's share 0..256; the sigma-delta */
 static uint8_t fm1__br_on, fm1__br_d, fm1__br_lit;   /* this frame: any LED breathing, the dither, lit */
 static void fm1__breath_frame(void)               /* (a new frame, before column 0's pulse) */
@@ -431,10 +433,10 @@ static void fm1__breath_frame(void)               /* (a new frame, before column
     uint32_t c, any = 0, x, d;
     for (c = 0; c < FM1_NCOL; c++)
         any |= fm1_led_breath[c];
-    x = !any ? 0u : fm1__br_on ? (fm1__br_ph + 1u) & (FM1_LED_BREATH_FRAMES - 1u) : FM1_LED_BREATH_FRAMES / 2u;
+    x = !any ? 0u : fm1__br_on ? (fm1__br_ph + fm1_br_step) & (FM1_LED_BREATH_FRAMES - 1u) : FM1_LED_BREATH_FRAMES / 2u;
     fm1__br_on = any != 0u;
     fm1__br_ph = (uint16_t)x;
-    d = x & 7u;                                    /* the dither: 0..7 bit-reversed, x 32 */
+    d = fm1__br_n++ & 7u;                          /* the dither: 0..7 bit-reversed, x 32 */
     fm1__br_d = (uint8_t)(((d & 1u) << 7) | ((d & 2u) << 5) | ((d & 4u) << 3));
     x = x * 512u / FM1_LED_BREATH_FRAMES;          /* 0..511 */
     x = x & 256u ? 511u - x : x;                   /* a triangle 0..255 */

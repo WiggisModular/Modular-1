@@ -65,14 +65,15 @@ static const uint8_t FONT5X7[59][5] = {
 
 static uint16_t font_row[240];
 
-/* draws s at (x, y), scale px per dot; characters outside the table (and lower case) map to upper case or blank */
-static void text5x7(uint32_t x, uint32_t y, const char *s, uint32_t scale, uint16_t fg, uint16_t bg)
+/* draws s at (x, y); size2 is the size in half dots per pixel step: 2 = 1x, 3 = 1.5x, 4 = 2x. Characters outside the table
+ * (and lower case) map to upper case or blank */
+static void text_dots(uint32_t x, uint32_t y, const char *s, uint32_t size2, uint16_t fg, uint16_t bg)
 {
-    uint32_t n = 0, r, c, i, k;
+    uint32_t n = 0, r, c, i, k, cell = 3u * size2, gw = (5u * size2 + 1u) / 2u, gh = (7u * size2 + 1u) / 2u;
     for (; s[n]; n++)
         ;
-    for (r = 0; r < 7u * scale; r++) {
-        uint32_t w = n * 6u * scale;
+    for (r = 0; r < gh; r++) {
+        uint32_t w = n * cell;
         if (w > 240u)
             w = 240u;
         for (i = 0; i < w; i++)
@@ -83,9 +84,9 @@ static void text5x7(uint32_t x, uint32_t y, const char *s, uint32_t scale, uint1
                 ch -= 32u;
             if (ch < 0x20u || ch > 0x5Au)
                 ch = 0x20u;
-            for (k = 0; k < 5u * scale; k++) {
-                uint32_t px = c * 6u * scale + k;
-                if (px < 240u && (FONT5X7[ch - 0x20u][k / scale] >> (r / scale)) & 1u)
+            for (k = 0; k < gw; k++) {
+                uint32_t px = c * cell + k;
+                if (px < 240u && (FONT5X7[ch - 0x20u][k * 2u / size2] >> (r * 2u / size2)) & 1u)
                     font_row[px] = fg;
             }
         }
@@ -97,4 +98,15 @@ static void text5x7(uint32_t x, uint32_t y, const char *s, uint32_t scale, uint1
             lcd_sync();                     /* sw is reused by the next row */
         }
     }
+}
+
+static void text5x7(uint32_t x, uint32_t y, const char *s, uint32_t scale, uint16_t fg, uint16_t bg)
+{
+    text_dots(x, y, s, 2u * scale, fg, bg);
+}
+
+/* 1.5x: 9 px per character, 11 px high */
+static void text_mid(uint32_t x, uint32_t y, const char *s, uint16_t fg, uint16_t bg)
+{
+    text_dots(x, y, s, 3u, fg, bg);
 }

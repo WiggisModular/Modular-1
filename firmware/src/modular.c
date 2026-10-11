@@ -44,6 +44,7 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 #include "arp.c"
 #include "audio.c"
 #include "usb.c"
+#include "midi_uart.c"
 #include "storage_hw.c"
 #include "ota.c"
 #include "ota_hw.c"

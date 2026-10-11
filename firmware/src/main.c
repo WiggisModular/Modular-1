@@ -20,8 +20,10 @@ void fm1_timer5_irq(void)
         acc -= 1000u * FM1_TICKS_PER_US;
         fm1_ms++;
     }
-    if (sub++ % 5u == 0u)
+    if (sub++ % 5u == 0u) {
         usb_poll();                             /* 2 kHz: all USB SIE traffic lives here */
+        uart_midi_poll();                       /* the TRS jack's DMA ring (128 bytes = 41 ms) */
+    }
     if (sub == 10u)
         sub = 0;
 }
@@ -115,7 +117,7 @@ static void preset_load(uint32_t n)
     uint32_t count = list_count(), len = 0;
     const uint8_t *data;
     const char *name;
-    char slot_name[M1_NAME + 1], *p = label_buf, num[12];
+    char slot_name[M1_NAME + 1], *p = label_buf;
     if (n >= count)
         return;
     if (bank_mask) {
@@ -131,16 +133,6 @@ static void preset_load(uint32_t n)
     if (m1_apply(data, len) == 0)
         m1_set_current(data, len);
     cur_preset = n;
-    if (n + 1u < 10u)
-        *p++ = '0';
-    fmt_int(num, (int32_t)n + 1);
-    p = put(p, num);
-    *p++ = '/';
-    if (count < 10u)
-        *p++ = '0';
-    fmt_int(num, (int32_t)count);
-    p = put(p, num);
-    *p++ = ' ';
     p = put(p, name);
     *p = 0;
     patch_label = label_buf;
@@ -298,15 +290,20 @@ static void knobs_poll(void)
     }
     for (k = 0; k < 4u; k++) {
         uint32_t mask;
+        int panel_knob = -1;
         if (!st[2u + k])
             continue;
         mask = eng_knob_mask(sel, k);
         for (j = 0; j < DEFS[eng_type(sel)].npar; j++) {
             const def_t *d = &DEFS[eng_type(sel)];
-            int32_t inc, v;
+            int32_t inc, v, pn;
             uint32_t fast = fm1_ms - last_ms[k] < 80u;
             if (!(mask >> j & 1u))
                 continue;
+            if ((pn = eng_knob_panel(sel, k, j)) >= 0) {   /* the panel's knob drives it: turn that one (as with the panel selected) */
+                panel_knob = pn;
+                continue;
+            }
             inc = d->pinc[j];
             if (eng_param_is_log(sel, j)) {              /* the cutoff: 1/100 of its octaves per click */
                 v = eng_step_param(sel, j, st[2u + k], fast ? 5 * 655 : 655);
@@ -318,6 +315,16 @@ static void knobs_poll(void)
             }
             eng_set_param(sel, j, v);
             m1_patch_param(sel, j, v);
+        }
+        if (panel_knob >= 0) {
+            const def_t *fd = &DEFS[T_FM1];
+            int32_t inc = fd->pinc[k], v;
+            if (inc < ENG_ONE && fm1_ms - last_ms[k] < 80u)
+                inc *= 5;
+            v = eng_get_param((uint32_t)panel_knob, k) + st[2u + k] * inc;
+            v = v < fd->pmin[k] ? fd->pmin[k] : v > fd->pmax[k] ? fd->pmax[k] : v;
+            eng_set_param((uint32_t)panel_knob, k, v);
+            m1_patch_param((uint32_t)panel_knob, k, v);
         }
         if (mask) {
             last_ms[k] = fm1_ms;
@@ -354,14 +361,28 @@ static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F
 #define BTN_SEQ 11u
 #define BTN_PLAY 12u
 #define BTN_LFO 5u                  /* the request said "BTN 52": there is no id 52 (buttons are 0..13), 5 is LFO in Felucca's table */
+static void led_breath_key(uint32_t id, int on)     /* a button's LED breathes (the HAL's one shared speed, fm1_br_step) */
+{
+    uint32_t p, r;
+    for (p = 0; p < FM1_NCOL; p++)
+        for (r = 1; r < 5u; r++)
+            if (FM1_KEYMAP[r][p] == (int8_t)id) {
+                if (on)
+                    fm1_led_breath[p] |= (uint8_t)(1u << r);
+                else
+                    fm1_led_breath[p] &= (uint8_t)~(1u << r);
+            }
+}
+
 static void leds_arp(void)
 {
     int run = arp_play;
-    fm1_led_key(BTN_PLAY, !run);
+    fm1_led_key(BTN_PLAY, !run);                    /* stopped: PLAY's red LED; running: the green one breathes */
+    fm1_led[8] &= (uint8_t)~2u;
     if (run)
-        fm1_led[8] |= 2u;
+        fm1_led_breath[8] |= 2u;
     else
-        fm1_led[8] &= (uint8_t)~2u;
+        fm1_led_breath[8] &= (uint8_t)~2u;
     fm1_led_key(BTN_ARP, page == 1u);
     fm1_led_key(BTN_SEQ, page == 2u);
     fm1_led_key(BTN_LFO, page == 3u);
@@ -386,8 +407,10 @@ static void arp_toggle(void)
 /* OCT- / OCT+ light up while the octave is shifted */
 static void leds_octave(void)
 {
-    fm1_led_key(0, octave < 0);
-    fm1_led_key(1, octave > 0);
+    uint32_t m = (uint32_t)(octave < 0 ? -octave : octave);
+    led_breath_key(0, octave < 0);                  /* the further from 0 the faster: 1 slow, 2 medium, 3 fast */
+    led_breath_key(1, octave > 0);
+    fm1_br_step = m >= 3u ? 4u : m == 2u ? 2u : 1u;   /* (the PLAY breath runs at the same speed) */
 }
 
 /* SAVE: the current state (the patch with its edited parameters, the octave, the selected module and preset) to flash */
@@ -406,19 +429,70 @@ static void save_state(void)
 #define BTN_OCT_DOWN 0u
 #define BTN_OCT_UP 1u
 #define BTN_SAVE 9u
+/* the panel's buttons (ids 0..13); the unused ones do nothing yet and show no banner */
+#define BTN_FX 2u
+#define BTN_SEL 3u
+#define BTN_ENV 4u
+#define BTN_EDIT 6u
+#define BTN_GLO 7u
+#define BTN_REC 13u
+#define BTN_HOME 8u                     /* HOME: back to the module page, on the FM-1 panel module of the patch */
+
+static void led_glow(uint32_t id)                   /* the HAL's dim glow (~1/30 of lit) for a button's LED */
+{
+    uint32_t p, r;
+    for (p = 0; p < FM1_NCOL; p++)
+        for (r = 1; r < 5u; r++)
+            if (FM1_KEYMAP[r][p] == (int8_t)id)
+                fm1_led_dim[p] |= (uint8_t)(1u << r);
+}
+
+static void leds_avail(void)                        /* the page buttons glow dimly (lit while their page shows) */
+{
+    led_glow(BTN_HOME);
+    led_glow(BTN_ARP);
+    led_glow(BTN_SEQ);
+    led_glow(BTN_LFO);
+}
+
+static void home_press(void)
+{
+    uint32_t n = (uint32_t)eng_nmodules(), i;
+    for (i = 0; i < n; i++)
+        if (eng_type(i) == T_FM1) {
+            sel = i;
+            break;
+        }
+    if (page) {
+        page = 0;
+        leds_arp();
+        lcd_fill(0, 24, 240, 216, C_BG);
+    }
+    view_draw(1);
+}
 static void buttons_poll(void)
 {
-    uint32_t rel, p = fm1_input_edges(&rel), b;
+    uint32_t rel, p = fm1_input_edges(&rel);
     if (p & (1u << BTN_OCT_DOWN))
         octave = octave > -3 ? octave - 1 : octave;
     if (p & (1u << BTN_OCT_UP))
         octave = octave < 3 ? octave + 1 : octave;
     if (p & ((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP))) {
         leds_octave();
-        header_draw();
+        {
+            char m[12], num[8], *q = m;
+            q = put(q, "OCTAVE ");
+            if (octave > 0)
+                *q++ = '+';
+            fmt_int(num, octave);
+            put(q, num);
+            ui_msg(m, 1000);
+        }
     }
     if (p & (1u << BTN_SAVE))
         save_state();
+    if (p & (1u << BTN_HOME))
+        home_press();
     if (p & (1u << BTN_ARP))
         page_set(1);
     if (p & (1u << BTN_SEQ))
@@ -427,18 +501,13 @@ static void buttons_poll(void)
         page_set(3);
     if (p & (1u << BTN_PLAY))
         arp_toggle();
-    for (b = 0; b < 14u; b++)
-        if ((p >> b & 1u) && b != BTN_OCT_DOWN && b != BTN_OCT_UP && b != BTN_SAVE && b != BTN_ARP && b != BTN_SEQ &&
-            b != BTN_LFO && b != BTN_PLAY) {
-            char m[10], num[8], *q = m;
-            q = put(q, "BTN ");
-            fmt_int(num, (int32_t)b);
-            put(q, num);
-            ui_msg(m, 1000);
-        }
 }
 
-#define SPLASH_MS 5000u
+#ifdef M1_SPLASH                                        /* build with -DM1_SPLASH to bring the splash screen back */
+#define SPLASH_MS 10000u
+#else
+#define SPLASH_MS 0u                                    /* switched off for now */
+#endif
 
 static void splash_draw(void)
 {
@@ -457,12 +526,14 @@ static void fm1_main(void)
     if (flash_ok)
         ota_boot_cleanup();                             /* staging area left by an update */
     lcd_init();
-    splash_draw();
+    if (SPLASH_MS)
+        splash_draw();
     fm1_input_init();
     fm1_adc_init();
     master_boot();
     audio_init();
     usb_start();
+    uart_midi_init();                                   /* before TIMER5: PORTH read-modify-write */
     fm1_timer5_start(isr_timer5, 4);
     fm1_guard_lock_top();
     fm1_irq_enable_all();
@@ -475,6 +546,7 @@ static void fm1_main(void)
     lcd_fill(0, 0, 240, 240, C_BG);
     ui_dirty = 2;
     leds_arp();
+    leds_avail();
     for (;;) {
         fm1_wdt_feed();
         usb_retry(fm1_ms);
@@ -488,11 +560,6 @@ static void fm1_main(void)
         knobs_poll();
         master_poll();
         {
-            static uint32_t t_stat;
-            if (fm1_ms - t_stat >= 250u) {
-                t_stat = fm1_ms;
-                status_draw();
-            }
             if (msg_until && fm1_ms >= msg_until)
                 ui_msg_clear();
             if (ui_dirty) {

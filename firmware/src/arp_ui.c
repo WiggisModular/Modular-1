@@ -93,10 +93,10 @@ static void au_row(uint32_t page, uint32_t k)
     text5x7(12, y, line, 1, C_DIM, C_BG);
     au_value(page, k, val);
     p = val + str_len(val);
-    pad(p, val, 18);
-    text5x7(12, y + 10u, val, 2, C_FG, C_BG);
-    lcd_fill(12, y + 27u, w, 2, C_ACC);
-    lcd_fill(12 + w, y + 27u, 216u - w, 2, 0x2104u);
+    pad(p, val, 24);
+    text_mid(12, y + 10u, val, C_FG, C_BG);
+    lcd_fill(12, y + 24u, w, 2, C_ACC);
+    lcd_fill(12 + w, y + 24u, 216u - w, 2, 0x2104u);
 }
 
 /* The Euclid pattern as dots, one per step, rotated as it plays: ring position i is the pattern's step (i + rotation).
@@ -147,10 +147,8 @@ static void au_step_poll(uint32_t page)
 
 static void au_title(uint32_t page)
 {
-    int run = arp_play;
     text5x7(12, AU_TOP + 2u, "ARP", 1, C_DIM, C_BG);
-    text5x7(12, AU_TOP + 12u, AU_TITLE[page], 2, C_ACC, C_BG);
-    text5x7(170, AU_TOP + 12u, run ? "PLAY" : "STOP", 2, run ? 0x07E0u : C_RED, C_BG);
+    text_mid(12, AU_TOP + 12u, AU_TITLE[page], C_ACC, C_BG);
 }
 
 /* page 1..3; full: also the parts that only change with the page */
@@ -167,5 +165,5 @@ static void arp_view_draw(uint32_t page, int full)
         au_dots();
     }
     if (full)
-        text5x7(12, 232, "ARP SEQ LFO: PAGE   PLAY: RUN", 1, 0x4208u, C_BG);
+        text5x7(12, 232, "ARP SEQ LFO: PAGE", 1, 0x4208u, C_BG);
 }

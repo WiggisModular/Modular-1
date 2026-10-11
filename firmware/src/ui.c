@@ -3,7 +3,7 @@
 /* The LCD: patch name and CPU load, the octave, a small picture of the patch, the selected module with what the four
  * knobs change (for the FM-1 panel module: where each knob goes), and the two parameter inputs.
  *
- *   y   2  MODULAR-1 and version        y  40  3/8 SVF FILTER (the selected module)
+ *   y   2  MODULAR-1 and version        y  40  3/8 FILTER (the selected module)
  *   y  19  patch name, octave, message  y  58  the patch picture, 220 x 56
  *   y  29  CPU                          y 120  K1..K4 rows        y 200 P1, P2 */
 #define C_BG 0x0000u
@@ -77,22 +77,47 @@ static char *put_param(char *d, const def_t *def, uint32_t j, int32_t q16)
         while (names[n])
             n++;
         i = i < 0 ? 0 : i >= n ? n - 1 : i;
-        return put(d, names[i]);
+        d = put(d, names[i]);
+        *d = 0;
+        return d;
     }
     d = put_num(d, q16);
     if (def->punit && def->punit[j][0]) {
         *d++ = ' ';
         d = put(d, def->punit[j]);
     }
+    *d = 0;
     return d;
+}
+
+static uint32_t log2_q8(uint32_t x)             /* log2 of x >= 1 in 1/256, linear inside each octave */
+{
+    uint32_t b = 31u - (uint32_t)__builtin_clz(x);
+    uint32_t frac = b >= 8u ? (x >> (b - 8u)) - 256u : (x << (8u - b)) - 256u;
+    return b * 256u + frac;
+}
+
+/* where parameter j stands in its range, 0..width pixels (logarithmic parameters on a log scale) */
+static uint32_t param_bar(const def_t *def, uint32_t j, int32_t q16, uint32_t width)
+{
+    int32_t lo = def->pmin[j], hi = def->pmax[j];
+    int64_t v = q16 < lo ? lo : q16 > hi ? hi : q16;
+    if (hi <= lo)
+        return 0;
+    if (def->plog && def->plog[j] && lo > 0) {
+        uint32_t a = log2_q8((uint32_t)lo), b = log2_q8((uint32_t)hi), x = log2_q8((uint32_t)v);
+        return b > a ? (x - a) * width / (b - a) : 0u;
+    }
+    return (uint32_t)(((v - lo) * (int64_t)width) / (hi - lo));
 }
 
 /* ---- the picture of the patch: modules as coloured boxes in columns by depth, cables as lines */
 
-#define TH_X 10u
-#define TH_Y 36u
-#define TH_W 220u
-#define TH_H 120u
+#define TH_X 164u                       /* the right third of the screen, below the header */
+#define TH_Y 26u
+#define TH_W 76u
+#define TH_H 198u
+#define LEFT_W 136u                     /* the left two thirds: text and bars from x = 12 */
 static uint16_t th_buf[TH_W * TH_H] __attribute__((section(".pool")));   /* byte swapped, as the LCD takes it */
 
 static const uint16_t TYPE_COLOR[N_TYPES] = {
@@ -169,7 +194,7 @@ static void thumb_draw(void)
     for (i = 0; i < TH_W * TH_H; i++)
         th_buf[i] = 0;
     if (!n) {
-        text5x7(TH_X + 4, TH_Y + 54, "EMPTY PATCH", 1, C_DIM, C_BG);
+        text5x7(TH_X + 4, TH_Y + 90, "EMPTY", 1, C_DIM, C_BG);
         return;
     }
     for (i = 0; i < n; i++)
@@ -195,31 +220,31 @@ static void thumb_draw(void)
     for (i = 0; i < ncols; i++)
         if (rows_in[i] > maxrows)
             maxrows = rows_in[i];
-    bw = ((int32_t)TH_W - 8) / (int32_t)ncols - 8;               /* room for the cable between the columns */
-    bw = bw > 44 ? 44 : bw < 16 ? 16 : bw;
-    bh = (int32_t)TH_H / (int32_t)maxrows - 3;
-    bh = bh > 13 ? 13 : bh < 6 ? 6 : bh;
-    {
-        int32_t pitch = (int32_t)TH_H / (int32_t)maxrows;
+    {   /* layers run top to bottom, the modules of a layer side by side; a 2 px margin all round */
+        int32_t pitch_y = ((int32_t)TH_H - 4) / (int32_t)ncols, pitch_x = ((int32_t)TH_W - 4) / (int32_t)maxrows;
+        bh = pitch_y - 8;
+        bh = bh > 15 ? 15 : bh < 6 ? 6 : bh;
+        bw = pitch_x - 4;
+        bw = bw > 60 ? 60 : bw < 10 ? 10 : bw;
         for (i = 0; i < n; i++) {
-            int32_t off = ((int32_t)maxrows - (int32_t)rows_in[layer[i]]) * pitch / 2;
-            px[i] = 4 + (ncols > 1u ? (int32_t)layer[i] * ((int32_t)TH_W - 8 - bw) / ((int32_t)ncols - 1) : ((int32_t)TH_W - bw) / 2 - 4);
-            py[i] = off + (int32_t)row[i] * pitch + (pitch - bh) / 2;
+            int32_t off = ((int32_t)maxrows - (int32_t)rows_in[layer[i]]) * pitch_x / 2;
+            px[i] = 2 + off + (int32_t)row[i] * pitch_x + (pitch_x - bw) / 2;
+            py[i] = 2 + (int32_t)layer[i] * pitch_y + (pitch_y - bh) / 2;
         }
     }
     for (c = 0; c < nc; c++) {                                   /* the cables first, the boxes over them */
         uint32_t f, fp, t, tp;
         eng_cable(c, &f, &fp, &t, &tp);
         if (layer[t] > layer[f])
-            th_line(px[f] + bw, py[f] + bh / 2, px[t] - 1, py[t] + bh / 2, 0x6B4D);
+            th_line(px[f] + bw / 2, py[f] + bh, px[t] + bw / 2, py[t] - 1, 0x6B4D);
         else
-            th_line(px[f] + bw / 2, py[f] + bh / 2, px[t] + bw / 2, py[t] + bh / 2, 0xA145);   /* feedback / same column */
+            th_line(px[f] + bw / 2, py[f] + bh / 2, px[t] + bw / 2, py[t] + bh / 2, 0xA145);   /* feedback / same row */
     }
     for (i = 0; i < n; i++) {
         int t = eng_type(i);
         uint16_t col = t >= 0 ? TYPE_COLOR[t] : C_DIM;
         th_rect(px[i], py[i], bw, bh, col);
-        if (t >= 0 && bh >= 9) {                                 /* the module's name, as much as fits, black on its colour */
+        if (t >= 0 && bh >= 9 && bw >= 14) {                                 /* the module's name, as much as fits, black on its colour */
             char nm[8];
             uint32_t k = 0, maxc = (uint32_t)(bw - 2) / 6u;
             const char *src = DEFS[t].name;
@@ -249,57 +274,47 @@ static void thumb_show(void)
 
 /* ---- text parts */
 
-static void status_draw(void)                   /* the engine's CPU load, a few times a second */
+/* the bar at the top: black on the accent colour, the text centred (the preset name; for a moment a message, or red for a
+ * load error) */
+#define BAR_H 22u
+static void bar_text(const char *s, uint16_t bg)
 {
-    char line[24], num[12], *p = line;
-    p = put(p, "CPU ");
-    fmt_int(num, (int32_t)(eng_us_last * 100u / 2902u));
-    p = put(p, num);
-    p = put(p, "% PK ");
-    fmt_int(num, (int32_t)(eng_us_max * 100u / 2902u));
-    p = put(p, num);
-    p = put(p, "%");
-    pad(p, line, 14);
-    text5x7(130, 12, line, 1, C_DIM, C_BG);
+    char b[28];
+    uint32_t n = str_len(s), w, i;
+    n = n > 26u ? 26u : n;
+    for (i = 0; i < n; i++)
+        b[i] = s[i];
+    b[n] = 0;
+    w = n * 9u;
+    lcd_fill(0, 0, 240, BAR_H, bg);
+    if (n)
+        text_mid((240u - w) / 2u, (BAR_H - 11u) / 2u, b, C_BG, bg);
 }
 
-static void header_draw(void)                   /* the patch name, the octave, a message */
+static void header_draw(void)
 {
-    char b[40], num[12], *p = b;
     if (load_err) {
+        char b[24], num[12], *p = b;
         p = put(p, "LOAD ERR ");
         fmt_int(num, load_err);
-        p = put(p, num);
-        pad(p, b, 30);
-        text5x7(12, 2, b, 1, C_RED, C_BG);
+        put(p, num);
+        p[str_len(num)] = 0;
+        bar_text(b, C_RED);
     } else {
-        p = put(p, patch_label);
-        pad(p, b, 30);
-        text5x7(12, 2, b, 1, C_FG, C_BG);
+        bar_text(patch_label, C_ACC);
     }
-    p = b;
-    p = put(p, "OCT ");
-    if (octave > 0)
-        *p++ = '+';
-    fmt_int(num, octave);
-    p = put(p, num);
-    pad(p, b, 6);
-    text5x7(12, 12, b, 1, octave ? C_ACC : C_DIM, C_BG);
+    msg_until = 0;
 }
 
-static void ui_msg(const char *s, uint32_t ms)  /* a short message at the right of the header */
+static void ui_msg(const char *s, uint32_t ms)  /* a short message in the bar instead of the name */
 {
-    char b[10], *p = b;
-    p = put(p, s);
-    pad(p, b, 7);
-    text5x7(66, 12, b, 1, C_ACC, C_BG);
+    bar_text(s, C_FG);
     msg_until = fm1_ms + ms;
 }
 
 static void ui_msg_clear(void)
 {
-    text5x7(66, 12, "       ", 1, C_BG, C_BG);
-    msg_until = 0;
+    header_draw();
 }
 
 /* where knob k of the FM-1 panel module goes: "<MODULE> <PARAMETER>" of the first module input the cable from k leads to */
@@ -360,7 +375,30 @@ static int knob_target(uint32_t panel, uint32_t k, char *out)
     return found;
 }
 
-/* the selected module: name, what the four knobs change, the two parameter inputs */
+/* the selected module, laid out like the arpeggiator pages: name, then per knob a small label, the value and a bar; the
+ * picture of the patch stands at the right (TH_X..) */
+static void module_row(uint32_t k, const char *label, const char *val, int active, int32_t bar)
+{
+    char line[40], v[24], *p = line;
+    uint32_t y = 56u + 36u * k;
+    *p++ = 'K';
+    *p++ = (char)('1' + k);
+    *p++ = ' ';
+    p = put(p, label);
+    pad(p, line, 22);
+    text5x7(12, y, line, 1, C_DIM, C_BG);
+    p = put(v, val);
+    pad(p, v, 15);
+    text_mid(12, y + 10u, v, active ? C_FG : C_DIM, C_BG);
+    if (bar >= 0) {
+        uint32_t w = (uint32_t)bar > LEFT_W ? LEFT_W : (uint32_t)bar;
+        lcd_fill(12, y + 24u, w, 2, C_ACC);
+        lcd_fill(12 + w, y + 24u, LEFT_W - w, 2, 0x2104u);
+    } else {
+        lcd_fill(12, y + 24u, LEFT_W, 2, C_BG);
+    }
+}
+
 static void module_draw(int full)
 {
     char line[48], tgt[40], *p;
@@ -372,40 +410,27 @@ static void module_draw(int full)
         return;
     }
     d = &DEFS[type];
-    p = line;
-    fmt_int(p, (int32_t)sel + 1);
-    p += str_len(p);
-    *p++ = '/';
-    fmt_int(p, (int32_t)n);
-    p += str_len(p);
-    *p++ = ' ';
-    p = put(p, d->name);
-    pad(p, line, 36);
     if (full) {
-        text5x7(12, 24, line, 1, C_ACC, C_BG);
+        p = line;
+        p = put(p, "MODULE ");
+        fmt_int(p, (int32_t)sel + 1);
+        p += str_len(p);
+        *p++ = '/';
+        fmt_int(p, (int32_t)n);
+        p += str_len(p);
+        pad(p, line, 22);
+        text5x7(12, 26, line, 1, C_DIM, C_BG);
+        p = put(line, d->name);
+        pad(p, line, 15);
+        text_mid(12, 36, line, C_ACC, C_BG);
         thumb_show();
     }
     for (k = 0; k < 4u; k++) {
-        uint32_t y = 160u + 12u * k;
-        char *start = line;
-        p = line;
-        *p++ = 'K';
-        *p++ = (char)('1' + k);
-        *p++ = ' ';
         if (type == T_FM1) {                            /* the panel: the knob's destination and a bar for its value */
             int32_t v = eng_get_param(sel, FM1_P_K1 + k);
-            uint32_t w = (uint32_t)(((int64_t)(v < 0 ? 0 : v > 65536 ? 65536 : v) * 216) >> 16);
             int has = knob_target(sel, k, tgt);
-            if (has) {
-                tgt[16] = 0;
-                p = put(p, tgt);
-            } else {
-                p = put(p, "-");
-            }
-            pad(p, start, 36);
-            text5x7(12, y, line, 1, has ? C_FG : C_DIM, C_BG);
-            lcd_fill(12, y + 8u, w, 2, C_ACC);
-            lcd_fill(12 + w, y + 8u, 216u - w, 2, 0x2104u);
+            tgt[15] = 0;
+            module_row(k, "", has ? tgt : "-", has, (int32_t)(((int64_t)(v < 0 ? 0 : v > 65536 ? 65536 : v) * LEFT_W) >> 16));
         } else {
             uint32_t mask = eng_knob_mask(sel, k), first = 0, cnt = 0;
             for (j = 0; j < d->npar; j++)
@@ -415,10 +440,9 @@ static void module_draw(int full)
                     cnt++;
                 }
             if (!cnt) {
-                p = put(p, "-");
-                pad(p, start, 36);
+                module_row(k, "", "-", 0, -1);
             } else {
-                char nm[10], val[14], *q = nm;
+                char nm[10], val[24], *q = nm;
                 q = put(q, d->pname[first]);
                 *q = 0;
                 if (str_len(nm) > 8u)
@@ -429,16 +453,11 @@ static void module_draw(int full)
                     nm[l] = '+';
                     nm[l + 1u] = 0;
                 }
-                p = put(p, nm);
-                pad(p, start + 3, 8);                   /* names are at most 7 characters; the value column is 8 wide */
-                p = start + 11;
-                put_param(val, d, first, eng_get_eff(sel, first));      /* what the sound uses, knobs and cables included */
-                val[8] = 0;
-                p = put(p, val);
-                pad(p, start, 36);
+                int32_t eff = eng_get_eff(sel, first);          /* what the sound uses, knobs and cables included */
+                put_param(val, d, first, eff);
+                val[15] = 0;
+                module_row(k, nm, val, 1, (int32_t)param_bar(d, first, eff, LEFT_W));
             }
-            text5x7(12, y, line, 1, cnt ? C_FG : C_DIM, C_BG);
-            lcd_fill(12, y + 8u, 216u, 2, C_BG);
         }
     }
     for (k = 0; k < 2u; k++) {
@@ -461,11 +480,12 @@ static void module_draw(int full)
                     p = put(p, d->pname[j]);
                 }
         }
-        pad(p, start, 40);
-        text5x7(12, 210u + 9u * k, line, 1, d->cvbase >= 0 && mask ? C_FG : C_DIM, C_BG);
+        start[24] = 0;                                  /* the left two thirds only */
+        pad(p < start + 24 ? p : start + 24, start, 24);
+        text5x7(12, 204u + 9u * k, line, 1, d->cvbase >= 0 && mask ? C_FG : C_DIM, C_BG);
     }
     if (full)
-        text5x7(12, 230, "SAVE: STORE   OCT-/OCT+: OCTAVE", 1, 0x4208u, C_BG);
+        text5x7(12, 230, "SAVE: STORE  OCT-/OCT+: OCTAVE", 1, 0x4208u, C_BG);
 }
 
 static void arp_view_draw(uint32_t page, int full);
@@ -478,11 +498,8 @@ static void view_draw(int full)                 /* whichever page is showing */
         module_draw(full);
 }
 
-static void screen_idle(void)
+static void screen_idle(void)                   /* redraws in place: every text pads its field, no blanking of the screen */
 {
-    lcd_fill(0, 0, 240, 240, C_BG);
-    text5x7(198, 2, FELUCCA_VERSION, 1, C_ACC, C_BG);
     header_draw();
-    status_draw();
     view_draw(1);
 }
