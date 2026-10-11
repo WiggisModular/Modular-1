@@ -438,6 +438,18 @@ static void fm1_main(void)
         {   /* the editor's SysEx (proto.c) before the update protocol's */
             const uint8_t *fp;
             uint32_t fn;
+#define SPLASH_MS 5000u
+
+static void splash_draw(void)
+{
+    lcd_fill(0, 0, 240, 240, C_BG);
+    lcd_fill(12, 84, 216, 3, C_ACC);
+    text5x7(12, 96, "MODULAR-1", 4, C_FG, C_BG);
+    lcd_fill(12, 132, 216, 3, C_ACC);
+    text5x7(12, 146, "PATCHABLE SYNTH FOR FM-1", 1, C_DIM, C_BG);
+    text5x7(12, 160, FELUCCA_VERSION, 1, C_ACC, C_BG);
+}
+
             if (ota_frame_get(&fp, &fn) && m1_handle(fp, fn))
                 ota_frame_done();
         }
@@ -445,6 +457,7 @@ static void fm1_main(void)
         if (usb.ota_req) {                              /* M-UPGRADE upgrade command */
             usb.ota_req = 0;
             eng_run = 0;
+    splash_draw();
             if (flash_ok)
                 ota_session();                          /* returns only if nothing was committed */
             if (m1_apply(m1_cur, m1_cur_len) == 0)
@@ -455,6 +468,12 @@ static void fm1_main(void)
         if (usb.uboot_req) {                            /* SysEx F0 22 24 35 7D F7 from the host */
             fm1_audio_stop();
             lcd_fill(0, 0, 240, 240, C_BG);
+    while (fm1_ms < SPLASH_MS) {                        /* keep the splash up, USB stays served */
+        fm1_wdt_feed();
+        usb_retry(fm1_ms);
+    }
+    lcd_fill(0, 0, 240, 240, C_BG);
+    ui_dirty = 2;
             text5x7(12, 110, "UBOOT (USB)", 3, C_ACC, C_BG);
             fm1_delay_ms(20);
             usb_detach();
