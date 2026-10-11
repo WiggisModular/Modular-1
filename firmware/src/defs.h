@@ -124,21 +124,26 @@ enum {
 #define VCA_NPAR 1
 #define VCA_CVBASE 2
 
-/* filter: SVF filter */
+/* filter: Filter */
 #define FILTER_I_IN 0
 #define FILTER_I_CV 1
-#define FILTER_I_P1 2
-#define FILTER_I_P2 3
-#define FILTER_O_LP 0
+#define FILTER_I_MORPH 2
+#define FILTER_I_P1 3
+#define FILTER_I_P2 4
+#define FILTER_O_LP12 0
 #define FILTER_O_BP 1
 #define FILTER_O_HP 2
+#define FILTER_O_LP24 3
+#define FILTER_O_MIX 4
 #define FILTER_P_CUTOFF 0
 #define FILTER_P_RES 1
 #define FILTER_P_CVAMT 2
-#define FILTER_NIN 4
-#define FILTER_NOUT 3
-#define FILTER_NPAR 3
-#define FILTER_CVBASE 2
+#define FILTER_P_TRACK 3
+#define FILTER_P_MORPH 4
+#define FILTER_NIN 5
+#define FILTER_NOUT 5
+#define FILTER_NPAR 5
+#define FILTER_CVBASE 3
 
 /* mixer: Mixer 4 */
 #define MIXER_I_IN1 0
@@ -282,15 +287,16 @@ static const char *const VCA_PN[] = {"GAIN"};
 static const uint8_t VCA_LOG[] = {0};
 static const char *const VCA_UNIT[] = {""};
 static const char *const *const VCA_CH[] = {0};
-static const char *const FILTER_INNAMES[] = {"IN", "CV", "P1", "P2"};
-static const int32_t FILTER_MIN[] = {1310720, 0, 0};
-static const int32_t FILTER_MAX[] = {1179648000, 65536, 262144};
-static const int32_t FILTER_DEF[] = {78643200, 13107, 65536};
-static const int32_t FILTER_INC[] = {11783373, 655, 2621};
-static const char *const FILTER_PN[] = {"CUTOFF", "RES", "CVAMT"};
-static const uint8_t FILTER_LOG[] = {1, 0, 0};
-static const char *const FILTER_UNIT[] = {"HZ", "", "OCT"};
-static const char *const *const FILTER_CH[] = {0, 0, 0};
+static const char *const FILTER_INNAMES[] = {"IN", "CV", "MORPH", "P1", "P2"};
+static const int32_t FILTER_MIN[] = {1310720, 0, 0, 0, 0};
+static const int32_t FILTER_MAX[] = {1179648000, 65536, 262144, 65536, 65536};
+static const int32_t FILTER_DEF[] = {78643200, 13107, 65536, 0, 0};
+static const int32_t FILTER_INC[] = {11783373, 655, 2621, 65536, 655};
+static const char *const FILTER_PN[] = {"CUTOFF", "RES", "CVAMT", "TRACK", "MORPH"};
+static const uint8_t FILTER_LOG[] = {1, 0, 0, 0, 0};
+static const char *const FILTER_UNIT[] = {"HZ", "", "OCT", "", ""};
+static const char *const FILTER_CH3[] = {"OFF", "ON", 0};
+static const char *const *const FILTER_CH[] = {0, 0, 0, FILTER_CH3, 0};
 static const char *const MIXER_INNAMES[] = {"IN1", "IN2", "IN3", "IN4", "P1", "P2"};
 static const int32_t MIXER_MIN[] = {0, 0, 0, 0};
 static const int32_t MIXER_MAX[] = {65536, 65536, 65536, 65536};
@@ -337,7 +343,7 @@ static const def_t DEFS[N_TYPES] = {
     {SCALE_NIN, SCALE_NOUT, SCALE_NPAR, SCALE_CVBASE, SCALE_MIN, SCALE_MAX, SCALE_DEF, SCALE_INC, "SCALE", SCALE_PN, SCALE_INNAMES, SCALE_LOG, SCALE_UNIT, SCALE_CH},   /* scale */
     {ADSR_NIN, ADSR_NOUT, ADSR_NPAR, ADSR_CVBASE, ADSR_MIN, ADSR_MAX, ADSR_DEF, ADSR_INC, "ADSR", ADSR_PN, ADSR_INNAMES, ADSR_LOG, ADSR_UNIT, ADSR_CH},   /* adsr */
     {VCA_NIN, VCA_NOUT, VCA_NPAR, VCA_CVBASE, VCA_MIN, VCA_MAX, VCA_DEF, VCA_INC, "VCA", VCA_PN, VCA_INNAMES, VCA_LOG, VCA_UNIT, VCA_CH},   /* vca */
-    {FILTER_NIN, FILTER_NOUT, FILTER_NPAR, FILTER_CVBASE, FILTER_MIN, FILTER_MAX, FILTER_DEF, FILTER_INC, "SVF FILTER", FILTER_PN, FILTER_INNAMES, FILTER_LOG, FILTER_UNIT, FILTER_CH},   /* filter */
+    {FILTER_NIN, FILTER_NOUT, FILTER_NPAR, FILTER_CVBASE, FILTER_MIN, FILTER_MAX, FILTER_DEF, FILTER_INC, "FILTER", FILTER_PN, FILTER_INNAMES, FILTER_LOG, FILTER_UNIT, FILTER_CH},   /* filter */
     {MIXER_NIN, MIXER_NOUT, MIXER_NPAR, MIXER_CVBASE, MIXER_MIN, MIXER_MAX, MIXER_DEF, MIXER_INC, "MIXER 4", MIXER_PN, MIXER_INNAMES, MIXER_LOG, MIXER_UNIT, MIXER_CH},   /* mixer */
     {DELAY_NIN, DELAY_NOUT, DELAY_NPAR, DELAY_CVBASE, DELAY_MIN, DELAY_MAX, DELAY_DEF, DELAY_INC, "DELAY", DELAY_PN, DELAY_INNAMES, DELAY_LOG, DELAY_UNIT, DELAY_CH},   /* delay */
     {REVERB_NIN, REVERB_NOUT, REVERB_NPAR, REVERB_CVBASE, REVERB_MIN, REVERB_MAX, REVERB_DEF, REVERB_INC, "REVERB", REVERB_PN, REVERB_INNAMES, REVERB_LOG, REVERB_UNIT, REVERB_CH},   /* reverb */

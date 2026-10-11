@@ -63,7 +63,7 @@ export const PRESETS: Record<string, () => Patch> = {
       wire(kb, 'gate', fenv, 'gate');
       wire(fenv, 'env', flt, 'cv');
       wire(kb, 'gate', aenv, 'gate');
-      wire(flt, 'lp', vca, 'in');
+      wire(flt, 'lp12', vca, 'in');
       wire(aenv, 'env', vca, 'cv');
       wire(vca, 'out', dly, 'in');
       wire(dly, 'out', out, 'l');
@@ -80,7 +80,7 @@ export const PRESETS: Record<string, () => Patch> = {
       wire(osc, 'out', flt, 'in');
       wire(kb, 'gate', env, 'gate');
       wire(env, 'env', flt, 'cv');
-      wire(flt, 'lp', vca, 'in');
+      wire(flt, 'lp12', vca, 'in');
       wire(env, 'env', vca, 'cv');
       wire(vca, 'out', out, 'l');
     }),
@@ -118,7 +118,7 @@ export const PRESETS: Record<string, () => Patch> = {
       wire(osc, 'out', flt, 'in');
       wire(lfo, 'out', flt, 'cv');
       wire(kb, 'gate', env, 'gate');
-      wire(flt, 'lp', vca, 'in');
+      wire(flt, 'lp12', vca, 'in');
       wire(env, 'env', vca, 'cv');
       wire(vca, 'out', out, 'l');
     }),
@@ -134,7 +134,7 @@ export const PRESETS: Record<string, () => Patch> = {
       wire(fm, 'pitch', osc, 'pitch');
       wire(fm, 'gate', env, 'gate');
       wire(osc, 'out', flt, 'in');
-      wire(flt, 'lp', vca, 'in');
+      wire(flt, 'lp12', vca, 'in');
       wire(env, 'env', vca, 'cv');
       wire(vca, 'out', dly, 'in');
       wire(dly, 'out', out, 'l');
@@ -148,7 +148,7 @@ export const PRESETS: Record<string, () => Patch> = {
       const saw = add('osc', ...L(1, 1), { wave: 2, coarse: -24, level: 0.4 });
       const mix = add('mixer', ...L(2), { l1: 0.8, l2: 0.5 });
       const flt = add('filter', ...L(3), { cutoff: 420, res: 0.1 });
-      const v = voice(add, wire, kb, flt, 'lp', { a: 0.005, d: 0.2, s: 0.8, r: 0.15 }, 4);
+      const v = voice(add, wire, kb, flt, 'lp12', { a: 0.005, d: 0.2, s: 0.8, r: 0.15 }, 4);
       wire(kb, 'pitch', sine, 'pitch');
       wire(kb, 'pitch', saw, 'pitch');
       wire(sine, 'out', mix, 'in1');
@@ -162,7 +162,7 @@ export const PRESETS: Record<string, () => Patch> = {
       const osc = add('osc', ...L(1), { wave: 2, level: 0.8 });
       const fe = add('adsr', ...L(2, 1), { a: 0.001, d: 0.18, s: 0, r: 0.1 });
       const flt = add('filter', ...L(2), { cutoff: 300, res: 0.3, cvamt: 3 });
-      const v = voice(add, wire, kb, flt, 'lp', { a: 0.001, d: 0.35, s: 0, r: 0.2 }, 3);
+      const v = voice(add, wire, kb, flt, 'lp12', { a: 0.001, d: 0.35, s: 0, r: 0.2 }, 3);
       const dly = add('delay', ...L(4), { time: 300, fb: 0.35, mix: 0.25 });
       wire(kb, 'pitch', osc, 'pitch');
       wire(kb, 'gate', fe, 'gate');
@@ -179,7 +179,7 @@ export const PRESETS: Record<string, () => Patch> = {
       const mix = add('mixer', ...L(2), { l1: 0.5, l2: 0.5 });
       const lfo = add('lfo', ...L(2, 1), { wave: 0, rate: 0.3, depth: 0.5 });
       const flt = add('filter', ...L(3), { cutoff: 900, res: 0.15, cvamt: 0.8 });
-      const v = voice(add, wire, kb, flt, 'lp', { a: 1.2, d: 1, s: 0.8, r: 1.8 }, 4);
+      const v = voice(add, wire, kb, flt, 'lp12', { a: 1.2, d: 1, s: 0.8, r: 1.8 }, 4);
       const dly = add('delay', ...L(5), { time: 420, fb: 0.4, mix: 0.3 });
       wire(kb, 'pitch', a, 'pitch');
       wire(kb, 'pitch', b, 'pitch');
@@ -197,7 +197,7 @@ export const PRESETS: Record<string, () => Patch> = {
       const kb = add('fm1', ...L(0));
       const osc = add('osc', ...L(1), { wave: 3, pw: 0.5, level: 0.7 });
       const flt = add('filter', ...L(2), { cutoff: 3000, res: 0.25 });
-      const v = voice(add, wire, kb, flt, 'lp', { a: 0.01, d: 0.2, s: 0.7, r: 0.2 }, 3);
+      const v = voice(add, wire, kb, flt, 'lp12', { a: 0.01, d: 0.2, s: 0.7, r: 0.2 }, 3);
       const dly = add('delay', ...L(5), { time: 250, fb: 0.3, mix: 0.2 });
       wire(kb, 'pitch', osc, 'pitch');
       wire(osc, 'out', flt, 'in');
@@ -298,7 +298,7 @@ export const PRESETS: Record<string, () => Patch> = {
       const lfo = add('lfo', ...L(1, 1), { wave: 0, rate: 5.5, depth: 1 });
       const sc = add('scale', ...L(2, 1), { gain: 0.03 });
       const flt = add('filter', ...L(2), { cutoff: 2500, res: 0.2 });
-      const v = voice(add, wire, kb, flt, 'lp', { a: 0.02, d: 0.3, s: 0.8, r: 0.25 }, 3);
+      const v = voice(add, wire, kb, flt, 'lp12', { a: 0.02, d: 0.3, s: 0.8, r: 0.25 }, 3);
       wire(kb, 'pitch', osc, 'pitch');
       wire(lfo, 'out', sc, 'in');
       wire(sc, 'out', osc, 'pitch');
@@ -355,7 +355,7 @@ export const PRESETS: Record<string, () => Patch> = {
       const mix = add('mixer', ...L(2), { l1: 0.5, l2: 0.5 });
       const fe = add('adsr', ...L(2, 1), { a: 0.15, d: 0.3, s: 0.6, r: 0.2 });
       const flt = add('filter', ...L(3), { cutoff: 400, res: 0.1, cvamt: 2.2 });
-      const v = voice(add, wire, kb, flt, 'lp', { a: 0.08, d: 0.2, s: 0.85, r: 0.2 }, 4);
+      const v = voice(add, wire, kb, flt, 'lp12', { a: 0.08, d: 0.2, s: 0.85, r: 0.2 }, 4);
       wire(kb, 'pitch', a, 'pitch');
       wire(kb, 'pitch', b, 'pitch');
       wire(kb, 'gate', fe, 'gate');
@@ -376,7 +376,7 @@ export const PRESETS: Record<string, () => Patch> = {
       });
       const lfo = add('lfo', ...L(2, 1), { wave: 0, rate: 0.6, depth: 0.3 });
       const flt = add('filter', ...L(3), { cutoff: 2200, res: 0.1, cvamt: 0.4 });
-      const v = voice(add, wire, kb, flt, 'lp', { a: 0.5, d: 0.5, s: 0.9, r: 1 }, 4);
+      const v = voice(add, wire, kb, flt, 'lp12', { a: 0.5, d: 0.5, s: 0.9, r: 1 }, 4);
       const dly = add('delay', ...L(6), { time: 35, fb: 0.2, mix: 0.35 }); // a short delay: chorus-like
       wire(mix, 'out', flt, 'in');
       wire(lfo, 'out', flt, 'cv');
@@ -391,7 +391,7 @@ export const PRESETS: Record<string, () => Patch> = {
       const osc = add('osc', ...L(1), { wave: 3, coarse: -12, level: 0.5 });
       const lfo = add('lfo', ...L(1, 1), { wave: 1, rate: 6, depth: 1 });
       const flt = add('filter', ...L(2), { cutoff: 250, res: 0.7, cvamt: 2.5 });
-      const v = voice(add, wire, kb, flt, 'lp', { a: 0.003, d: 0.1, s: 1, r: 0.1 }, 3);
+      const v = voice(add, wire, kb, flt, 'lp12', { a: 0.003, d: 0.1, s: 1, r: 0.1 }, 3);
       wire(kb, 'pitch', osc, 'pitch');
       wire(osc, 'out', flt, 'in');
       wire(lfo, 'out', flt, 'cv');
@@ -415,7 +415,7 @@ export const PRESETS: Record<string, () => Patch> = {
       const mix = add('mixer', ...L(2), { l1: 0.5, l2: 0.5 });
       const fe = add('adsr', ...L(2, 1), { a: 0.001, d: 0.25, s: 0, r: 0.1 });
       const flt = add('filter', ...L(3), { cutoff: 700, res: 0.5, cvamt: 2 });
-      const v = voice(add, wire, kb, flt, 'lp', { a: 0.001, d: 0.3, s: 0, r: 0.2 }, 4);
+      const v = voice(add, wire, kb, flt, 'lp12', { a: 0.001, d: 0.3, s: 0, r: 0.2 }, 4);
       const dly = add('delay', ...L(6), { time: 500, fb: 0.65, mix: 0.45 });
       wire(kb, 'pitch', a, 'pitch');
       wire(kb, 'pitch', b, 'pitch');
@@ -466,7 +466,7 @@ export const PRESETS: Record<string, () => Patch> = {
       wire(b, 'out', mix, 'in2');
       wire(mix, 'out', flt, 'in');
       wire(lfo, 'out', flt, 'cv');
-      wire(flt, 'lp', dly, 'in');
+      wire(flt, 'lp12', dly, 'in');
       toOut(add, wire, dly, 'out', 0.6, 5);
     }),
   'Tremolo Keys': () =>
@@ -529,7 +529,7 @@ export const PRESETS: Record<string, () => Patch> = {
       });
       const fe = add('adsr', ...L(2, 1), { a: 0.005, d: 0.3, s: 0.4, r: 0.2 });
       const flt = add('filter', ...L(3), { cutoff: 1800, res: 0.2, cvamt: 2 });
-      const v = voice(add, wire, kb, flt, 'lp', { a: 0.005, d: 0.2, s: 0.9, r: 0.15 }, 4);
+      const v = voice(add, wire, kb, flt, 'lp12', { a: 0.005, d: 0.2, s: 0.9, r: 0.15 }, 4);
       wire(kb, 'gate', fe, 'gate');
       wire(mix, 'out', flt, 'in');
       wire(fe, 'env', flt, 'cv');

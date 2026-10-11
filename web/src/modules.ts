@@ -268,23 +268,28 @@ const vca: ModuleImpl<null> = {
   },
 };
 
-const filter: ModuleImpl<{ ic1: number; ic2: number }> = {
+/** state variable filter, two stages: stage 1 (12 dB) gives lp12 / bp / hp, stage 2 takes lp12 and adds the other 12 dB (lp24) */
+const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }> = {
   def: {
     type: 'filter',
-    label: 'SVF filter',
-    inputs: [audio('in'), control('cv')],
-    outputs: [audio('lp'), audio('bp'), audio('hp')],
+    label: 'Filter',
+    inputs: [audio('in'), control('cv'), control('morph')],
+    outputs: [audio('lp12'), audio('bp'), audio('hp'), audio('lp24'), audio('mix')],
     params: [
       param('cutoff', 20, 18000, 1200, { unit: 'Hz', step: 1, log: true }),
       param('res', 0, 1, 0.2, { step: 0.01 }),
       param('cvamt', 0, 4, 1, { unit: 'oct', step: 0.01 }),
+      param('track', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
+      param('morph', 0, 1, 0, { step: 0.01 }),
     ],
   },
-  init: () => ({ ic1: 0, ic2: 0 }),
+  init: () => ({ ic1: 0, ic2: 0, jc1: 0, jc2: 0 }),
   process(c, s) {
     const k = 2 - 1.98 * (c.p.res ?? 0);
+    const k2 = Math.SQRT2; // stage 2 is damped (Q 0.7): the resonance peak comes from stage 1 alone
+    const tr = (c.p.track ?? 0) >= 0.5 ? c.voice.pitch : 0; // keyboard tracking: the cutoff follows the played pitch 1 octave per octave (C4 = the cutoff as set)
     for (let i = 0; i < c.n; i++) {
-      const fc = Math.min((c.p.cutoff ?? 1000) * Math.pow(2, c.inp.cv[i] * (c.p.cvamt ?? 1)), c.sr * 0.45);
+      const fc = Math.min((c.p.cutoff ?? 1000) * Math.pow(2, c.inp.cv[i] * (c.p.cvamt ?? 1) + tr), c.sr * 0.45);
       const g = Math.tan((Math.PI * fc) / c.sr);
       const a1 = 1 / (1 + g * (g + k));
       const a2 = g * a1;
@@ -295,9 +300,21 @@ const filter: ModuleImpl<{ ic1: number; ic2: number }> = {
       const v2 = s.ic2 + a2 * s.ic1 + a3 * v3;
       s.ic1 = 2 * v1 - s.ic1;
       s.ic2 = 2 * v2 - s.ic2;
-      c.out.lp[i] = v2;
+      const hp = v0 - k * v1 - v2;
+      const b1 = 1 / (1 + g * (g + k2));
+      const b2 = g * b1;
+      const b3 = g * b2;
+      const w3 = v2 - s.jc2;
+      const w1 = b1 * s.jc1 + b2 * w3;
+      const w2 = s.jc2 + b2 * s.jc1 + b3 * w3;
+      s.jc1 = 2 * w1 - s.jc1;
+      s.jc2 = 2 * w2 - s.jc2;
+      const m = Math.min(1, Math.max(0, (c.p.morph ?? 0) + c.inp.morph[i]));
+      c.out.lp12[i] = v2;
       c.out.bp[i] = v1;
-      c.out.hp[i] = v0 - k * v1 - v2;
+      c.out.hp[i] = hp;
+      c.out.lp24[i] = w2;
+      c.out.mix[i] = w2 + (hp - w2) * m; // morph 0 = 24 dB low pass, 1 = high pass
     }
   },
 };

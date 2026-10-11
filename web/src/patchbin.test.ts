@@ -11,7 +11,7 @@ describe('binary patch format', () => {
       const b = encodePatch(p);
       const dv = new DataView(b.buffer);
       expect(b[0], name).toBe(0xa1);
-      expect(b[1], name).toBe(4);
+      expect(b[1], name).toBe(5);
       expect(b[2], name).toBe(p.modules.length);
       expect(dv.getUint16(4, true), name).toBe(p.cables.length);
       const size = 8 + p.modules.reduce((s, m) => s + 1 + 4 * DEFS[m.type].params.length + (DEFS[m.type].paramInputs ? 14 : 0), 0) + 4 * p.cables.length;

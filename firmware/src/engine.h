@@ -8,7 +8,7 @@
 #define ENG_SR 44100u
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 4
+#define ENG_PATCH_VERSION 5
 
 /* Install a patch from its binary form (web/src/patchbin.ts). 0 on success, negative on error (the engine is then
  * silent). Resets all module state. Never call while eng_render runs (stop the audio ISR's call first). */

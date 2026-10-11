@@ -172,7 +172,7 @@ typedef struct {
         struct { uint32_t phase, seed; int32_t held; } lfo;
         struct { uint32_t seed; } noise;
         struct { int32_t v; uint8_t stage, prev; } adsr;
-        struct { int32_t ic1, ic2; } flt;
+        struct { int32_t ic1, ic2, jc1, jc2; } flt;   /* stage 1 and stage 2 integrators */
         struct { int16_t *buf; uint32_t w; } dly;
         struct { int16_t *buf; uint16_t ci[4], ai[2]; int32_t lp[4]; } rev;
     } s;
@@ -683,52 +683,83 @@ typedef struct {
     int32_t g, a1, a2, a3;
 } svf_coef_t;
 
-/* the filter's coefficients for a cutoff given as a phase increment (cutoff / sr in u32 turns) */
-static void svf_coef(svf_coef_t *c, uint32_t rinc, int32_t k24)
+/* the coefficients of one stage for the tan() warped cutoff g */
+static void svf_stage(svf_coef_t *c, int32_t g, int32_t k24)
 {
-    uint32_t i, fr;
-    int32_t t0, t1, g, den;
-    if (rinc > DT_MAX)
-        rinc = DT_MAX;
-    i = rinc >> 22;
-    fr = (rinc >> 6) & 0xFFFFu;
-    t0 = TAN_T[i];
-    t1 = TAN_T[i + 1u];
-    g = t0 + (int32_t)(((int64_t)(t1 - t0) * fr) >> 16);
-    den = (1 << 24) + mulq(g, g + k24, 24);
+    int32_t den = (1 << 24) + mulq(g, g + k24, 24);
     c->g = g;
     c->a1 = recip24(den);
     c->a2 = mulq(g, c->a1, 24);
     c->a3 = mulq(g, c->a2, 24);
 }
 
-/* The integrator states ic1, ic2 are Q20 (+-2048: room for the resonance peak), the signals Q16; products are rounded. */
+/* the warped cutoff g = tan(pi fc / sr) for a cutoff given as a phase increment (cutoff / sr in u32 turns) */
+static int32_t svf_g(uint32_t rinc)
+{
+    uint32_t i, fr;
+    int32_t t0, t1;
+    if (rinc > DT_MAX)
+        rinc = DT_MAX;
+    i = rinc >> 22;
+    fr = (rinc >> 6) & 0xFFFFu;
+    t0 = TAN_T[i];
+    t1 = TAN_T[i + 1u];
+    return t0 + (int32_t)(((int64_t)(t1 - t0) * fr) >> 16);
+}
+
+#define SQRT2_24 23726566   /* stage 2's k: sqrt(2) in Q24 (Q 0.7), the resonance comes from stage 1 only */
+
+/* Two stages: stage 1 (12 dB) gives lp12, bp, hp; stage 2 filters lp12 again (lp24); mix fades lp24 -> hp by morph.
+ * The integrator states are Q20 (+-2048: room for the resonance peak), the signals Q16; products are rounded.
+ * Key tracking moves the cutoff by the voice pitch (octaves, C4 = as set), like the host engine, once per block. */
 static void m_filter(node_t *nd, uint32_t n)
 {
-    const sig_t *in = nd->in[FILTER_I_IN], *cv = nd->in[FILTER_I_CV];
-    sig_t *lp = nd->out[FILTER_O_LP], *bp = nd->out[FILTER_O_BP], *hp = nd->out[FILTER_O_HP];
+    const sig_t *in = nd->in[FILTER_I_IN], *cv = nd->in[FILTER_I_CV], *mo = nd->in[FILTER_I_MORPH];
+    sig_t *lp = nd->out[FILTER_O_LP12], *bp = nd->out[FILTER_O_BP], *hp = nd->out[FILTER_O_HP];
+    sig_t *lp24 = nd->out[FILTER_O_LP24], *mix = nd->out[FILTER_O_MIX];
     int32_t k24 = (2 << 24) - mulq(EF(nd, FILTER_P_RES), 33218888, 16);   /* 2 - 1.98 res */
-    int32_t cvamt = EF(nd, FILTER_P_CVAMT), ic1 = nd->s.flt.ic1, ic2 = nd->s.flt.ic2;
+    int32_t cvamt = EF(nd, FILTER_P_CVAMT), ic1 = nd->s.flt.ic1, ic2 = nd->s.flt.ic2, jc1 = nd->s.flt.jc1, jc2 = nd->s.flt.jc2;
+    int32_t morph = EF(nd, FILTER_P_MORPH), tr = EF(nd, FILTER_P_TRACK) >= 32768 ? E.voice.pitch : 0;
     uint32_t base = (uint32_t)(((uint64_t)(uint32_t)EF(nd, FILTER_P_CUTOFF) << 16) / ENG_SR), i;
-    svf_coef_t c;
+    svf_coef_t c, d;
     int fixed = !(nd->conn & (1u << FILTER_I_CV));
-    if (fixed)
-        svf_coef(&c, base, k24);
+    int msig = nd->conn & (1u << FILTER_I_MORPH);
+    if (tr)
+        base = exp2_scale(base, tr);
+    if (fixed) {
+        int32_t g = svf_g(base);
+        svf_stage(&c, g, k24);
+        svf_stage(&d, g, SQRT2_24);
+    }
     for (i = 0; i < n; i++) {
-        int32_t v0 = in[i] << 4, v3, v1, v2;                               /* Q20 */
-        if (!fixed)
-            svf_coef(&c, exp2_scale(base, mul16(cv[i], cvamt)), k24);
+        int32_t v0 = in[i] << 4, v3, v1, v2, w3, w1, w2, h, m;               /* Q20 */
+        if (!fixed) {
+            int32_t g = svf_g(exp2_scale(base, mul16(cv[i], cvamt)));
+            svf_stage(&c, g, k24);
+            svf_stage(&d, g, SQRT2_24);
+        }
         v3 = v0 - ic2;
         v1 = mulr(c.a1, ic1, 24) + mulr(c.a2, v3, 24);
         v2 = ic2 + mulr(c.a2, ic1, 24) + mulr(c.a3, v3, 24);
         ic1 = clampi(2 * v1 - ic1, -(1 << 30), 1 << 30);
         ic2 = clampi(2 * v2 - ic2, -(1 << 30), 1 << 30);
+        h = v0 - mulr(v1, k24, 24) - v2;
+        w3 = v2 - jc2;
+        w1 = mulr(d.a1, jc1, 24) + mulr(d.a2, w3, 24);
+        w2 = jc2 + mulr(d.a2, jc1, 24) + mulr(d.a3, w3, 24);
+        jc1 = clampi(2 * w1 - jc1, -(1 << 30), 1 << 30);
+        jc2 = clampi(2 * w2 - jc2, -(1 << 30), 1 << 30);
+        m = clampi(msig ? morph + mo[i] : morph, 0, 65536);
         lp[i] = (v2 + 8) >> 4;
         bp[i] = (v1 + 8) >> 4;
-        hp[i] = (v0 - mulr(v1, k24, 24) - v2 + 8) >> 4;
+        hp[i] = (h + 8) >> 4;
+        lp24[i] = (w2 + 8) >> 4;
+        mix[i] = (w2 + mul16(h - w2, m) + 8) >> 4;
     }
     nd->s.flt.ic1 = ic1;
     nd->s.flt.ic2 = ic2;
+    nd->s.flt.jc1 = jc1;
+    nd->s.flt.jc2 = jc2;
 }
 
 static void m_mixer(node_t *nd, uint32_t n)

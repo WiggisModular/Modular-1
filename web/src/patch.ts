@@ -26,6 +26,8 @@ export interface ParamDef {
   /** logarithmic: the range is covered in equal ratios (a filter cutoff in octaves). Modulation and the knobs move the value in
    * that space: a fraction of the range is a fraction of the octaves. */
   log?: boolean;
+  /** an on/off switch (0 or 1): a check box in the editor, OFF / ON on the LCD */
+  toggle?: boolean;
 }
 
 /** position of a value in its range, 0..1 (logarithmic for log parameters) */
@@ -225,6 +227,7 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
   (p as { version: number }).version = 2;
   for (const c of p.cables) {
     const mf = p.modules.find((m) => m.id === c.from?.module);
+    if (mf?.type === 'filter' && c.from?.port === 'lp') c.from.port = 'lp12'; // the filter's 12 dB output used to be called lp
     const mt = p.modules.find((m) => m.id === c.to?.module);
     if (!mf || !mt) throw new Error('cable to a missing module');
     if (!defs[mf.type].outputs.some((o) => o.name === c.from.port)) throw new Error(`no output "${c.from.port}" on ${mf.type}`);

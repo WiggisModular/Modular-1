@@ -149,6 +149,16 @@ export class Editor {
         val.textContent = fmt(v);
         this.ev.onParam(m.id, pd.name, v);
       };
+      if (pd.toggle) {
+        input.type = 'checkbox';
+        input.checked = m.params[pd.name] >= 0.5;
+        input.oninput = () => {
+          const v = input.checked ? 1 : 0;
+          m.params[pd.name] = v;
+          val.textContent = fmt(v);
+          this.ev.onParam(m.id, pd.name, v);
+        };
+      }
       row.append(name, val, input);
       params.append(row);
     }

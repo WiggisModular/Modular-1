@@ -45,7 +45,7 @@ describe('patch model', () => {
     const f = addModule(p, DEFS.filter, 0, 0);
     const v = addModule(p, DEFS.vca, 0, 0);
     connect(p, DEFS, { module: o.id, port: 'out' }, { module: f.id, port: 'in' });
-    connect(p, DEFS, { module: f.id, port: 'lp' }, { module: v.id, port: 'in' });
+    connect(p, DEFS, { module: f.id, port: 'lp12' }, { module: v.id, port: 'in' });
     let r = processingOrder(p);
     expect(r.order).toEqual([o.id, f.id, v.id]);
     expect(r.feedback.size).toBe(0);
@@ -322,5 +322,54 @@ describe('engine', () => {
     const moved = modulate(cutoff, filt.params.cutoff, panel.params.k1 * filt.att![0]);
     expect(moved).toBeGreaterThan(299);
     expect(moved).toBeLessThan(301);
+  });
+});
+
+describe('filter', () => {
+  /** noise -> filter -> output left, taken from the given filter output */
+  function rig(port: string, params: Record<string, number>, note?: number): Float32Array {
+    const e = new Engine(SR);
+    const p = emptyPatch();
+    addModule(p, DEFS.fm1, 0, 0);
+    const n = addModule(p, DEFS.noise, 0, 0);
+    const f = addModule(p, DEFS.filter, 0, 0);
+    const out = addModule(p, DEFS.output, 0, 0);
+    Object.assign(f.params, { res: 0, ...params });
+    connect(p, DEFS, { module: n.id, port: 'out' }, { module: f.id, port: 'in' });
+    connect(p, DEFS, { module: f.id, port: port }, { module: out.id, port: 'l' });
+    e.load(p);
+    if (note !== undefined) e.noteOn(note);
+    render(e, 4800);
+    return render(e, SR).l;
+  }
+
+  it('has a 24 dB and a 12 dB low pass: the 24 dB one takes more of the highs away', () => {
+    const highs = (a: Float32Array): number => rms(a.slice(2).map((v, i) => v - 2 * a[i + 1] + a[i])); // second difference: the content far above the cutoff
+    const lp12 = highs(rig('lp12', { cutoff: 500 }));
+    const lp24 = highs(rig('lp24', { cutoff: 500 }));
+    expect(lp12).toBeGreaterThan(1e-5);
+    expect(lp24).toBeLessThan(lp12 * 0.3);
+  });
+
+  it('the mix output morphs from the 24 dB low pass (morph 0) to the high pass (morph 1)', () => {
+    const lp24 = rig('lp24', { cutoff: 800 }), hp = rig('hp', { cutoff: 800 });
+    const m0 = rig('mix', { cutoff: 800, morph: 0 }), m1 = rig('mix', { cutoff: 800, morph: 1 });
+    expect(rms(m0)).toBeCloseTo(rms(lp24), 6);
+    expect(rms(m1)).toBeCloseTo(rms(hp), 6);
+    expect(rms(m0)).not.toBeCloseTo(rms(m1), 3);
+  });
+
+  it('key tracking moves the cutoff with the pitch of the played note', () => {
+    const off = rms(rig('lp12', { cutoff: 300, track: 0 }, 84));
+    const on = rms(rig('lp12', { cutoff: 300, track: 1 }, 84)); // C6: 2 octaves above C4
+    expect(on).toBeGreaterThan(off * 1.5);
+    expect(rms(rig('lp12', { cutoff: 300, track: 1 }, 60))).toBeCloseTo(rms(rig('lp12', { cutoff: 300, track: 0 }, 60)), 6); // C4: no shift
+  });
+
+  it('loads old patches whose cables leave the filter at "lp"', () => {
+    const p = PRESETS['Subtractive saw']();
+    const q = JSON.parse(JSON.stringify(p));
+    for (const c of q.cables) if (c.from.port === 'lp12') c.from.port = 'lp';
+    expect(validatePatch(q, DEFS).cables.some((c) => c.from.port === 'lp12')).toBe(true);
   });
 });
