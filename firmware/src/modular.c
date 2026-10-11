@@ -41,6 +41,7 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 #define ENG_POOL __attribute__((section(".pool")))
 #include "engine.c"
 #include "presets.h"
+#include "arp.c"
 #include "audio.c"
 #include "usb.c"
 #include "storage_hw.c"
@@ -60,4 +61,5 @@ static int m1_slot_info(uint32_t slot, char *name, uint32_t *len);
 #include "bench.c"
 #endif
 #include "ui.c"
+#include "arp_ui.c"
 #include "main.c"

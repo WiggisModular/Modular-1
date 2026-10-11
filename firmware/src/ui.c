@@ -15,6 +15,7 @@
 static uint32_t cur_preset;
 static int load_err;
 static const char *patch_label = "";
+static uint8_t page;                            /* 0: the selected module, 1..3: the arpeggiator pages MELODY, RHYTHM, CHAOS (arp_ui.c) */
 static uint32_t sel;                            /* the module the knobs act on (SELECT turns it) */
 static volatile uint8_t ui_dirty;               /* 1: the knob rows need a redraw, 2: the module changed too (title, picture) */
 static int32_t octave;                          /* the keys' octave shift, -3..3 (OCT- / OCT+) */
@@ -467,11 +468,21 @@ static void module_draw(int full)
         text5x7(12, 230, "SAVE: STORE   OCT-/OCT+: OCTAVE", 1, 0x4208u, C_BG);
 }
 
+static void arp_view_draw(uint32_t page, int full);
+
+static void view_draw(int full)                 /* whichever page is showing */
+{
+    if (page)
+        arp_view_draw(page, full);
+    else
+        module_draw(full);
+}
+
 static void screen_idle(void)
 {
     lcd_fill(0, 0, 240, 240, C_BG);
     text5x7(198, 2, FELUCCA_VERSION, 1, C_ACC, C_BG);
     header_draw();
     status_draw();
-    module_draw(1);
+    view_draw(1);
 }

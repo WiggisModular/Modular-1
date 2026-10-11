@@ -56,6 +56,7 @@ static void fm1_fault(const fm1_crash_t *c)
 }
 
 static void leds_octave(void);
+static void page_set(uint32_t p);
 
 /* proto.c hooks */
 static int m1_flash_ok(void) { return flash_ok; }
@@ -272,6 +273,20 @@ static void knobs_poll(void)
         preset_step(st[6]);
         return;
     }
+    if (page && st[0])                              /* SELECT: back to the module page */
+        page_set(page);
+    if (page) {                                     /* K1..K4 of an arpeggiator page */
+        for (k = 0; k < 4u; k++) {
+            uint32_t fast = fm1_ms - last_ms[k] < 80u;
+            if (st[2u + k]) {
+                last_ms[k] = fm1_ms;
+                if (arp_knob(page, k, st[2u + k], (int)fast) && !ui_dirty)
+                    ui_dirty = 1;
+            }
+        }
+        if (!st[0])
+            return;
+    }
     if (!n)
         return;
     if (sel >= n)
@@ -332,6 +347,42 @@ static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F
     }
 }
 
+/* PLAY: red while the arpeggiator is stopped, green while it runs. The green LED sits at matrix column 8, row bit 1,
+ * where there is no key (found on the hardware by Felucca); the red one is PLAY's own. ARP / SEQ / LFO light up
+ * while their page shows. */
+#define BTN_ARP 10u
+#define BTN_SEQ 11u
+#define BTN_PLAY 12u
+#define BTN_LFO 5u                  /* the request said "BTN 52": there is no id 52 (buttons are 0..13), 5 is LFO in Felucca's table */
+static void leds_arp(void)
+{
+    int run = arp_play;
+    fm1_led_key(BTN_PLAY, !run);
+    if (run)
+        fm1_led[8] |= 2u;
+    else
+        fm1_led[8] &= (uint8_t)~2u;
+    fm1_led_key(BTN_ARP, page == 1u);
+    fm1_led_key(BTN_SEQ, page == 2u);
+    fm1_led_key(BTN_LFO, page == 3u);
+}
+
+static void page_set(uint32_t p)    /* the same button again goes back to the module page */
+{
+    page = (uint8_t)(page == p ? 0u : p);
+    leds_arp();
+    lcd_fill(0, 24, 240, 216, C_BG);
+    view_draw(1);
+}
+
+static void arp_toggle(void)
+{
+    arp_play = !arp_play;
+    leds_arp();
+    if (page)
+        ui_dirty = ui_dirty ? ui_dirty : 1;
+}
+
 /* OCT- / OCT+ light up while the octave is shifted */
 static void leds_octave(void)
 {
@@ -368,14 +419,35 @@ static void buttons_poll(void)
     }
     if (p & (1u << BTN_SAVE))
         save_state();
+    if (p & (1u << BTN_ARP))
+        page_set(1);
+    if (p & (1u << BTN_SEQ))
+        page_set(2);
+    if (p & (1u << BTN_LFO))
+        page_set(3);
+    if (p & (1u << BTN_PLAY))
+        arp_toggle();
     for (b = 0; b < 14u; b++)
-        if ((p >> b & 1u) && b != BTN_OCT_DOWN && b != BTN_OCT_UP && b != BTN_SAVE) {
+        if ((p >> b & 1u) && b != BTN_OCT_DOWN && b != BTN_OCT_UP && b != BTN_SAVE && b != BTN_ARP && b != BTN_SEQ &&
+            b != BTN_LFO && b != BTN_PLAY) {
             char m[10], num[8], *q = m;
             q = put(q, "BTN ");
             fmt_int(num, (int32_t)b);
             put(q, num);
             ui_msg(m, 1000);
         }
+}
+
+#define SPLASH_MS 5000u
+
+static void splash_draw(void)
+{
+    lcd_fill(0, 0, 240, 240, C_BG);
+    lcd_fill(12, 84, 216, 3, C_ACC);
+    text5x7(12, 96, "MODULAR-1", 4, C_FG, C_BG);
+    lcd_fill(12, 132, 216, 3, C_ACC);
+    text5x7(12, 146, "PATCHABLE SYNTH FOR FM-1", 1, C_DIM, C_BG);
+    text5x7(12, 160, FELUCCA_VERSION, 1, C_ACC, C_BG);
 }
 
 static void fm1_main(void)
@@ -385,6 +457,7 @@ static void fm1_main(void)
     if (flash_ok)
         ota_boot_cleanup();                             /* staging area left by an update */
     lcd_init();
+    splash_draw();
     fm1_input_init();
     fm1_adc_init();
     master_boot();
@@ -395,6 +468,13 @@ static void fm1_main(void)
     fm1_irq_enable_all();
     fm1_delay_ms(30);
     patch_boot();
+    while (fm1_ms < SPLASH_MS) {                        /* keep the splash up, USB stays served */
+        fm1_wdt_feed();
+        usb_retry(fm1_ms);
+    }
+    lcd_fill(0, 0, 240, 240, C_BG);
+    ui_dirty = 2;
+    leds_arp();
     for (;;) {
         fm1_wdt_feed();
         usb_retry(fm1_ms);
@@ -418,8 +498,9 @@ static void fm1_main(void)
             if (ui_dirty) {
                 int full = ui_dirty > 1;
                 ui_dirty = 0;
-                module_draw(full);
+                view_draw(full);
             }
+            au_step_poll(page);
         }
         {   /* OCT- + OCT+ (matrix buttons 0 and 1) held 5 s: UBOOT, as in Felucca */
             uint32_t both = 3u;
@@ -438,18 +519,6 @@ static void fm1_main(void)
         {   /* the editor's SysEx (proto.c) before the update protocol's */
             const uint8_t *fp;
             uint32_t fn;
-#define SPLASH_MS 5000u
-
-static void splash_draw(void)
-{
-    lcd_fill(0, 0, 240, 240, C_BG);
-    lcd_fill(12, 84, 216, 3, C_ACC);
-    text5x7(12, 96, "MODULAR-1", 4, C_FG, C_BG);
-    lcd_fill(12, 132, 216, 3, C_ACC);
-    text5x7(12, 146, "PATCHABLE SYNTH FOR FM-1", 1, C_DIM, C_BG);
-    text5x7(12, 160, FELUCCA_VERSION, 1, C_ACC, C_BG);
-}
-
             if (ota_frame_get(&fp, &fn) && m1_handle(fp, fn))
                 ota_frame_done();
         }
@@ -457,7 +526,6 @@ static void splash_draw(void)
         if (usb.ota_req) {                              /* M-UPGRADE upgrade command */
             usb.ota_req = 0;
             eng_run = 0;
-    splash_draw();
             if (flash_ok)
                 ota_session();                          /* returns only if nothing was committed */
             if (m1_apply(m1_cur, m1_cur_len) == 0)
@@ -468,12 +536,6 @@ static void splash_draw(void)
         if (usb.uboot_req) {                            /* SysEx F0 22 24 35 7D F7 from the host */
             fm1_audio_stop();
             lcd_fill(0, 0, 240, 240, C_BG);
-    while (fm1_ms < SPLASH_MS) {                        /* keep the splash up, USB stays served */
-        fm1_wdt_feed();
-        usb_retry(fm1_ms);
-    }
-    lcd_fill(0, 0, 240, 240, C_BG);
-    ui_dirty = 2;
             text5x7(12, 110, "UBOOT (USB)", 3, C_ACC, C_BG);
             fm1_delay_ms(20);
             usb_detach();

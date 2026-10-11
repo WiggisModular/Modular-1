@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 morgulbrut */
 /* Renders the device's LCD (firmware/src/ui.c) on the host into a PPM image, to look at the layout without a device.
- *   ui_preview OUT.ppm PRESET_INDEX [SELECTED_MODULE [OCTAVE]]
+ *   ui_preview OUT.ppm PRESET_INDEX [SELECTED_MODULE [OCTAVE [PAGE [STEP]]]]
  * tools/ui_preview.sh converts the image to PNG. */
 #include <stdint.h>
 #include <stdio.h>
@@ -17,6 +17,7 @@
 
 static uint16_t fb[240 * 240];
 static uint32_t fm1_ms;
+static uint32_t fm1_ticks(void) { return 0; }
 static uint32_t eng_us_last = 316, eng_us_max = 358;
 #define FELUCCA_VERSION "M1-PREVIEW"
 #define FM1_TICKS_PER_US 24u
@@ -44,7 +45,9 @@ static void lcd_sync(void) {}
 #include "../src/engine.c"
 #include "../src/presets.h"
 #include "../src/font5x7.c"
+#include "../src/arp.c"
 #include "../src/ui.c"
+#include "../src/arp_ui.c"
 
 int main(int argc, char **argv)
 {
@@ -63,6 +66,11 @@ int main(int argc, char **argv)
     }
     sel = argc > 3 ? (uint32_t)atoi(argv[3]) : 0u;
     octave = argc > 4 ? atoi(argv[4]) : 0;
+    page = argc > 5 ? (uint8_t)atoi(argv[5]) : 0u;          /* 1..3: the arpeggiator pages */
+    if (argc > 6) {                                         /* page 2: a playing step */
+        arp_play = 1;
+        arp_step_ui = (uint8_t)atoi(argv[6]);
+    }
     patch_label = PRESET_LIST[p].name;
     screen_idle();
     f = fopen(argv[1], "wb");
