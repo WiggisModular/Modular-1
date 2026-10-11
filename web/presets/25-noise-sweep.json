@@ -1,0 +1,298 @@
+{
+ "version": 2,
+ "name": "Noise Sweep",
+ "modules": [
+  {
+   "id": 1,
+   "type": "fm1",
+   "x": 26,
+   "y": 26,
+   "params": {
+    "k1": 0.6592,
+    "k2": 0.5,
+    "k3": 0.5,
+    "k4": 0.5
+   }
+  },
+  {
+   "id": 2,
+   "type": "noise",
+   "x": 299,
+   "y": 26,
+   "params": {
+    "level": 0.7
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "level"
+    ],
+    "p2": [],
+    "k1": [
+     "level"
+    ],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 3,
+   "type": "adsr",
+   "x": 299,
+   "y": 546,
+   "params": {
+    "a": 0.7502,
+    "d": 1,
+    "s": 0.2,
+    "r": 1
+   },
+   "att": [
+    0.3,
+    1
+   ],
+   "map": {
+    "p1": [
+     "a"
+    ],
+    "p2": [
+     "d"
+    ],
+    "k1": [
+     "a"
+    ],
+    "k2": [
+     "d"
+    ],
+    "k3": [
+     "s"
+    ],
+    "k4": [
+     "r"
+    ]
+   }
+  },
+  {
+   "id": 4,
+   "type": "filter",
+   "x": 572,
+   "y": 26,
+   "params": {
+    "cutoff": 20,
+    "res": 0.5,
+    "cvamt": 4,
+    "track": 0,
+    "morph": 0
+   },
+   "att": [
+    1,
+    0.6
+   ],
+   "map": {
+    "p1": [
+     "cutoff"
+    ],
+    "p2": [
+     "res"
+    ],
+    "k1": [
+     "cutoff"
+    ],
+    "k2": [
+     "res"
+    ],
+    "k3": [
+     "cvamt"
+    ],
+    "k4": [
+     "track"
+    ]
+   }
+  },
+  {
+   "id": 5,
+   "type": "adsr",
+   "x": 845,
+   "y": 546,
+   "params": {
+    "a": 0.3,
+    "d": 1,
+    "s": 0.8,
+    "r": 0.8
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "a"
+    ],
+    "p2": [
+     "d"
+    ],
+    "k1": [
+     "a"
+    ],
+    "k2": [
+     "d"
+    ],
+    "k3": [
+     "s"
+    ],
+    "k4": [
+     "r"
+    ]
+   }
+  },
+  {
+   "id": 6,
+   "type": "vca",
+   "x": 845,
+   "y": 26,
+   "params": {
+    "gain": 0.5
+   },
+   "att": [
+    0.5,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [],
+    "k1": [
+     "gain"
+    ],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 7,
+   "type": "output",
+   "x": 1391,
+   "y": 26,
+   "params": {
+    "level": 0.8
+   }
+  }
+ ],
+ "cables": [
+  {
+   "from": {
+    "module": 1,
+    "port": "gate"
+   },
+   "to": {
+    "module": 5,
+    "port": "gate"
+   }
+  },
+  {
+   "from": {
+    "module": 4,
+    "port": "bp"
+   },
+   "to": {
+    "module": 6,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 5,
+    "port": "env"
+   },
+   "to": {
+    "module": 6,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "gate"
+   },
+   "to": {
+    "module": 3,
+    "port": "gate"
+   }
+  },
+  {
+   "from": {
+    "module": 2,
+    "port": "out"
+   },
+   "to": {
+    "module": 4,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 3,
+    "port": "env"
+   },
+   "to": {
+    "module": 4,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 6,
+    "port": "out"
+   },
+   "to": {
+    "module": 7,
+    "port": "l"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "k1"
+   },
+   "to": {
+    "module": 4,
+    "port": "p1"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "k2"
+   },
+   "to": {
+    "module": 4,
+    "port": "p2"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "k3"
+   },
+   "to": {
+    "module": 3,
+    "port": "p1"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "k4"
+   },
+   "to": {
+    "module": 6,
+    "port": "p1"
+   }
+  }
+ ]
+}
