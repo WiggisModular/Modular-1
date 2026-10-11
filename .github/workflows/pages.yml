@@ -1,5 +1,5 @@
 name: pages
-# Publishes the web app (editor, presets, flasher and the bundled firmware package) to GitHub Pages:
+# Builds the firmware (JieLi toolchain + AC79 SDK files), then publishes the web app (editor, presets, flasher and the freshly built firmware package) to GitHub Pages:
 #   https://<owner>.github.io/<repo>/
 # One-time setup: repository Settings > Pages > Source: GitHub Actions.
 on:
@@ -30,9 +30,31 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      - name: JieLi toolchain and AC79 SDK (cached)
+        id: jieli
+        uses: actions/cache@v5
+        with:
+          path: ~/.jieli
+          key: jieli-AC79NN_SDK_V1.2.1_2023-12-13-toolchain-v1
+      - name: fetch the toolchain and the three SDK files
+        if: steps.jieli.outputs.cache-hit != 'true'
+        working-directory: .
+        run: |
+          tools/get_toolchain.sh
+          git clone --filter=blob:none --no-checkout --depth 1 --branch AC79NN_SDK_V1.2.1_2023-12-13 \
+            https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git ~/.jieli/ac79-sdk
+          git -C ~/.jieli/ac79-sdk sparse-checkout set cpu/wl82/tools
+          git -C ~/.jieli/ac79-sdk checkout
+      - name: build the firmware package
+        working-directory: .
+        run: |
+          export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
+          (cd web && npm run export-defs)
+          python3 tools/build.py
+          (cd web && npm run firmware)
       - run: npm test
       - run: npm run build
-      - name: the firmware package must be there (npm run firmware, committed)
+      - name: the firmware package must be there
         run: test -s dist/firmware/modular-1.fwsc && test -s dist/firmware/modular-1.json
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
