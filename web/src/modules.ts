@@ -80,7 +80,7 @@ const knobNames = Array.from({ length: N_KNOBS }, (_, i) => `k${i + 1}`);
 const fm1: ModuleImpl<null> = {
   def: {
     type: 'fm1',
-    label: 'FM-1 panel',
+    label: 'Main',
     inputs: [],
     outputs: [control('pitch'), gate('gate'), control('vel'), ...knobNames.map(control)],
     params: [...knobNames.map((n) => param(n, 0, 1, 0.5, { step: 0.01 }))],

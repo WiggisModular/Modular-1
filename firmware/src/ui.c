@@ -411,18 +411,9 @@ static void module_draw(int full)
     }
     d = &DEFS[type];
     if (full) {
-        p = line;
-        p = put(p, "MODULE ");
-        fmt_int(p, (int32_t)sel + 1);
-        p += str_len(p);
-        *p++ = '/';
-        fmt_int(p, (int32_t)n);
-        p += str_len(p);
-        pad(p, line, 22);
-        text5x7(12, 26, line, 1, C_DIM, C_BG);
         p = put(line, d->name);
         pad(p, line, 15);
-        text_mid(12, 36, line, C_ACC, C_BG);
+        text_mid(12, 30, line, C_ACC, C_BG);
         thumb_show();
     }
     for (k = 0; k < 4u; k++) {
