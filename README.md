@@ -10,7 +10,7 @@ It's even more Alpha than Andrew Taint at the moment: there's an arpeggiator and
 
 ## Use
 
-- Web app:[https://morgulbrut.github.io/Modular-1](https://github.com/WiggisModular/Modular-1)(Chrome or Edge, MIDI access needed)
+- Web app:[https://morgulbrut.github.io/Modular-1](https://github.com/WiggisModular/Modular-1)(https://github.com/WiggisModular/Modular-1)(Chrome or Edge, MIDI access needed)
 - Run it yourself: `cd web && npm install && npm run dev`
 - Build the firmware: `nix develop`, then `python3 tools/build.py`
 
