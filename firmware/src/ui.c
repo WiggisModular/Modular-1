@@ -19,7 +19,7 @@ static uint8_t page;                            /* 0: the selected module, 1..3:
 static uint32_t sel;                            /* the module the knobs act on (SELECT turns it) */
 static volatile uint8_t ui_dirty;               /* 1: the knob rows need a redraw, 2: the module changed too (title, picture) */
 static int32_t octave;                          /* the keys' octave shift, -3..3 (OCT- / OCT+) */
-static uint32_t msg_until;                      /* a message in the header (SAVED ...) until this fm1_ms */
+static uint32_t msg_until;                      /* a message in the top bar (SAVED ...) until this fm1_ms */
 
 static char *put(char *d, const char *s)
 {
@@ -111,9 +111,9 @@ static uint32_t param_bar(const def_t *def, uint32_t j, int32_t q16, uint32_t wi
     return (uint32_t)(((v - lo) * (int64_t)width) / (hi - lo));
 }
 
-/* ---- the picture of the patch: modules as coloured boxes in columns by depth, cables as lines */
+/* ---- the picture of the patch: modules as coloured boxes in rows by depth (a vertical strip), cables as lines */
 
-#define TH_X 164u                       /* the right third of the screen, below the header */
+#define TH_X 164u                       /* the right third of the screen, below the top bar */
 #define TH_Y 26u
 #define TH_W 76u
 #define TH_H 198u

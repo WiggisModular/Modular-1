@@ -39,7 +39,7 @@ Benchmark (`firmware/src/bench.c`, numbers in docs/ARCHITECTURE.md): no FPU, flo
 - `firmware/src/engine.c` (+ `engine.h`, generated `defs.h`, `presets.h`, `dsp_tables.h`): fixed-point port of all 13 modules, mono, Q16.16. `tools/golden.sh` (inside `nix develop`) compares it with `web/src/engine.ts`: 11 patches pass (rms error <= 3 % of reference rms; smooth patches ~0.1 %).
 - Regenerate after changing `modules.ts` or `presets.ts`: `cd web && npm run export-defs` (defs.h, presets.h); tables: `python3 tools/gen_dsp_tables.py`. Binary patch format: `web/src/patchbin.ts` (type/port indices are append-only).
 - **Verified on the FM-1 (M1-0.2): sound is clean.** 303 Acid costs 11 % of the audio budget (peak 12 %, ISR time per 128-frame half incl. key scan and USB). The 27 keys play F3..G5 (`fm1_in.notes`), the MASTER pot is a software gain read via ADC (square law, `master_q12`); output samples are 24-bit in the LOW bits of each I2S word (Q16 << 6, -6 dBFS ceiling), not left-justified as the HAL comment suggests.
-- Device: audio ISR renders the engine; MIDI program change = factory patch, LCD shows CPU %. Build passes; flash it and read the CPU figure for the 303 Acid preset before anything else.
+- Device: audio ISR renders the engine; MIDI program change = factory patch, the CPU figure is no longer drawn (`eng_us_last`/`eng_us_max` remain).
 - `firmware/src/bench.c` is only compiled with `-DM1_BENCH`.
 
 ## Patch transfer (M1-0.3, host-tested, NOT yet run on the device)
@@ -63,7 +63,7 @@ Benchmark (`firmware/src/bench.c`, numbers in docs/ARCHITECTURE.md): no FPU, flo
 
 ## M1-0.9 (host-tested; device UI/buttons not yet seen)
 
-- Buttons: OCT- (id 0) / OCT+ (id 1) octave shift of the keys, SAVE (id 9) stores the state (patch + octave + selected module + preset) via `m1_store`; other buttons show `BTN n` in the header (ids from Felucca's panel table: only PLAY/REC were measured, SAVE may differ: check on the device).
+- Buttons: OCT- (id 0) / OCT+ (id 1) octave shift of the keys, SAVE (id 9) stores the state (patch + octave + selected module + preset) via `m1_store`; unused buttons show nothing (ids from Felucca's panel table: only PLAY/REC were measured, SAVE may differ: check on the device).
 - LCD rewritten in `firmware/src/ui.c`; preview without a device: `nix develop -c tools/ui_preview.sh out.png PRESET [MODULE [OCTAVE]]`. Font now has + % & > = ( ) ? ! # * < , _ '.
 - Choice names / units / input names / log flags are generated into `defs.h` (`export-defs.ts`).
 - New module `reverb`; patch binary format 4; filter cutoff is logarithmic (`ParamDef.log`); each preset in `presets.ts` ends with plain `wire(kb, 'kN', module, 'p1'|'p2')` lines for K1..K4 (the module's `add` has the base value, `map` and `att`; the panel's `add` the k1..k4 start positions; `voice()` returns `[vca, adsr]` and takes optional opts for both) (rules in docs/ARCHITECTURE.md).
@@ -73,6 +73,13 @@ Benchmark (`firmware/src/bench.c`, numbers in docs/ARCHITECTURE.md): no FPU, flo
 
 - Module `filter` (label now just "Filter", it was "SVF filter"): outputs in this order `lp24`, `lp12` (was `lp`, old patches are migrated in `validatePatch`), `bp`, `hp`, `mix`; input `morph` (after `cv`); params `track` (check box, `ParamDef.toggle`; cutoff follows the played pitch 1 oct/oct, C4 = cutoff as set, per block) and `morph` (0 = 24 dB LP .. 1 = HP, plus the input, clamped). lp24 = a second SVF stage on lp12, damped (k = sqrt 2), so the resonance comes from stage 1. `hp` is the 12 dB high pass of stage 1.
 - Binary patch format is now 6 (5: port indices after `cv` moved, 2 new params; 6: filter output order); old stored patches fall back to factory patch 0.
+
+## Panel and LCD pass (host-previewed / built, not flashed)
+
+- LCD: top bar = preset name only (black on `C_ACC`, messages replace it for 1 s); module page like the arp pages (`text_mid` = 1.5x font, 9 px per char), value bars on every knob row (`param_bar`), patch diagram as a vertical strip at x 164..240. `screen_idle` no longer blanks the screen (page switches still do); `put_param` terminates its string.
+- Buttons (main.c): OCT- 0, OCT+ 1, FX 2, SEL 3, ENV 4, LFO 5, EDIT 6, GLO 7, HOME 8 (FM-1 panel page), SAVE 9, ARP 10, SEQ 11, PLAY 12, REC 13; unused ones do nothing. HOME/ARP/SEQ/LFO glow dimly; octave LEDs breathe with speed by |octave| (HAL `fm1_br_step`, one shared speed, PLAY's green LED breathes while the arp runs).
+- TRS MIDI in: `firmware/src/midi_uart.c` (Felucca's parser), polled in the TIMER5 ISR; never tried with a real source (TRS type A/B unknown).
+- USB product string is `Modular-1` (port "Modular-1:Modular-1 MIDI 1"); host tools match felucca|modular|fm-1. Boot splash is off (`-DM1_SPLASH`).
 
 ## Flash tab (simplified)
 
