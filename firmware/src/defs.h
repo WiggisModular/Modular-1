@@ -130,10 +130,10 @@ enum {
 #define FILTER_I_MORPH 2
 #define FILTER_I_P1 3
 #define FILTER_I_P2 4
-#define FILTER_O_LP12 0
-#define FILTER_O_BP 1
-#define FILTER_O_HP 2
-#define FILTER_O_LP24 3
+#define FILTER_O_LP24 0
+#define FILTER_O_LP12 1
+#define FILTER_O_BP 2
+#define FILTER_O_HP 3
 #define FILTER_O_MIX 4
 #define FILTER_P_CUTOFF 0
 #define FILTER_P_RES 1
@@ -208,7 +208,7 @@ typedef struct {
     const char *name;       /* upper case, for the LCD */
     const char *const *pname;
     const char *const *inname;              /* input names, upper case */
-    const uint8_t *plog;                    /* 1: a logarithmic parameter (the filter cutoff) */
+    const uint8_t *plog;                    /* 1: a logarithmic parameter, 2: logarithmic and bent (the filter cutoff) */
     const char *const *punit;               /* "HZ", "ST", ... or "" */
     const char *const *const *pchoice;      /* per parameter: the names of a choice parameter (0-terminated), or 0 */
 } def_t;
@@ -289,11 +289,11 @@ static const char *const VCA_UNIT[] = {""};
 static const char *const *const VCA_CH[] = {0};
 static const char *const FILTER_INNAMES[] = {"IN", "CV", "MORPH", "P1", "P2"};
 static const int32_t FILTER_MIN[] = {1310720, 0, 0, 0, 0};
-static const int32_t FILTER_MAX[] = {1179648000, 65536, 262144, 65536, 65536};
+static const int32_t FILTER_MAX[] = {262144000, 65536, 262144, 65536, 65536};
 static const int32_t FILTER_DEF[] = {78643200, 13107, 65536, 0, 0};
-static const int32_t FILTER_INC[] = {11783373, 655, 2621, 65536, 655};
+static const int32_t FILTER_INC[] = {2608333, 655, 2621, 65536, 655};
 static const char *const FILTER_PN[] = {"CUTOFF", "RES", "CVAMT", "TRACK", "MORPH"};
-static const uint8_t FILTER_LOG[] = {1, 0, 0, 0, 0};
+static const uint8_t FILTER_LOG[] = {2, 0, 0, 0, 0};
 static const char *const FILTER_UNIT[] = {"HZ", "", "OCT", "", ""};
 static const char *const FILTER_CH3[] = {"OFF", "ON", 0};
 static const char *const *const FILTER_CH[] = {0, 0, 0, FILTER_CH3, 0};

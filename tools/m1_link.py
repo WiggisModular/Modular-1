@@ -6,11 +6,16 @@
   tools/m1_link.py info
   tools/m1_link.py upload PATCH.m1p       (binary patches: build/golden/*.m1p from tools/golden.sh)
   tools/m1_link.py store
+  tools/m1_link.py bank                   (write the 32 factory presets from firmware/src/presets.h into the flash bank)
+  tools/m1_link.py bank-info              (list the bank slots on the FM-1)
+  tools/m1_link.py bank-clear             (empty the bank: the PRESET knob steps through the factory presets again)
   tools/m1_link.py param MODULE PARAM VALUE     (module / parameter index, value as a float)
   tools/m1_link.py note 60 [seconds]
   tools/m1_link.py program N              (factory patch N, MIDI program change)
 Needs mido and python-rtmidi (the Nix dev shell has them).
 """
+import os
+import re
 import sys
 import time
 
@@ -65,19 +70,19 @@ def frame(cmd, payload=()):
 
 class Link:
     def __init__(self):
-        pick = lambda names: next((n for n in names if "Felucca" in n or "FM-1" in n), None)
+        pick = lambda names: next((n for n in names if "Felucca" in n or "Modular" in n or "FM-1" in n), None)
         o, i = pick(mido.get_output_names()), pick(mido.get_input_names())
         if not o or not i:
             sys.exit("FM-1 not found")
         self.out, self.inp = mido.open_output(o), mido.open_input(i)
 
-    def ask(self, msg, want, tries=3):
+    def ask(self, msg, want, tries=3, wait=0.8):
         for _ in range(tries):
             for _ in self.inp.iter_pending():
                 pass
             self.out.send(msg)
             t = time.time()
-            while time.time() - t < 0.8:
+            while time.time() - t < wait:
                 for m in self.inp.iter_pending():
                     if m.type == "sysex" and list(m.data[:3]) == PREFIX and m.data[3] == want[0]:
                         p = unpack7(m.data[4:])
@@ -86,10 +91,27 @@ class Link:
                 time.sleep(0.002)
         sys.exit("no answer from the FM-1 (is it running the Modular-1 firmware with the editor protocol?)")
 
-    def ack(self, msg, cmd):
-        p = self.ask(msg, (0x40, cmd))
+    def ack(self, msg, cmd, wait=0.8, tries=3):
+        p = self.ask(msg, (0x40, cmd), tries, wait)
         if p[2]:
             sys.exit(f"FM-1: {STATUS[p[2]] if p[2] < len(STATUS) else p[2]} (aux {p[3]})")
+
+
+def upload_chunks(link, data):
+    for seq, off in enumerate(range(0, len(data), 384)):
+        part = data[off:off + 384]
+        link.ack(frame(0x10, [seq & 0x7F, off & 0xFF, off >> 8, len(data) & 0xFF, len(data) >> 8, *part]), 0x10)
+
+
+def factory_presets():
+    """[(name, bytes)] of the factory presets, from the generated firmware/src/presets.h (cd web && npm run export-defs)"""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "firmware", "src", "presets.h")
+    out = []
+    for m in re.finditer(r"PRESET_\d+\[\d+\] = \{([\d,]*)\};\s*/\* (.*?) \*/", open(path).read()):
+        out.append((m.group(2), bytes(int(x) for x in m.group(1).split(","))))
+    if not out:
+        sys.exit("no presets found in firmware/src/presets.h")
+    return out
 
 
 def main():
@@ -109,6 +131,31 @@ def main():
         c = crc16(data)
         link.ack(frame(0x11, [len(data) & 0xFF, len(data) >> 8, c & 0xFF, c >> 8]), 0x11)
         print(f"uploaded {len(data)} bytes")
+    elif a[0] == "bank":
+        presets = factory_presets()[:32]
+        for slot, (name, data) in enumerate(presets):
+            upload_chunks(link, data)
+            n = [ord(c) if 32 <= ord(c) < 127 else 0 for c in name[:20]]
+            n += [0] * (20 - len(n))
+            c = crc16(data)
+            link.ack(frame(0x13, [slot, *n, len(data) & 0xFF, len(data) >> 8, c & 0xFF, c >> 8]), 0x13, wait=4.0, tries=1)
+            print(f"slot {slot + 1:02d}  {name}  ({len(data)} bytes)")
+        for slot in range(len(presets), 32):
+            link.ack(frame(0x14, [slot]), 0x14, wait=4.0, tries=1)
+        print(f"bank written: {len(presets)} presets")
+    elif a[0] == "bank-info":
+        used = 0
+        for slot in range(32):
+            p = link.ask(frame(0x15, [slot]), (0x42, slot))
+            if p[1]:
+                used += 1
+                name = bytes(x for x in p[4:24] if 32 <= x < 127).decode()
+                print(f"slot {slot + 1:02d}  {name}  ({p[2] | p[3] << 8} bytes)")
+        print(f"{used} of 32 slots used" + ("" if used else ": the PRESET knob steps through the factory presets"))
+    elif a[0] == "bank-clear":
+        for slot in range(32):
+            link.ack(frame(0x14, [slot]), 0x14, wait=4.0, tries=1)
+        print("bank emptied")
     elif a[0] == "store":
         link.ack(frame(0x12), 0x12)
         print("stored")

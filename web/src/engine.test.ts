@@ -97,7 +97,7 @@ describe('engine', () => {
     e.noteOn(48);
     expect(rms(render(e, 9600).l)).toBeGreaterThan(0.02);
     e.noteOff(48);
-    render(e, SR * 3);
+    render(e, SR * 12); // the release is up to ~4 s with K4 at its start position
     expect(rms(render(e, 4800).l)).toBeLessThan(1e-3);
   });
 
@@ -287,13 +287,30 @@ describe('engine', () => {
     const cutoff = DEFS.filter.params.find((q) => q.name === 'cutoff')!;
     expect(cutoff.log).toBe(true);
     expect(toUnit(cutoff, 20)).toBeCloseTo(0, 6);
-    expect(toUnit(cutoff, 18000)).toBeCloseTo(1, 6);
-    expect(fromUnit(cutoff, 0.5)).toBeCloseTo(Math.sqrt(20 * 18000), 3);
-    const octaves = Math.log2(18000 / 20);
-    expect(Math.log2(modulate(cutoff, 200, 0.1) / 200)).toBeCloseTo(0.1 * octaves, 6); // a tenth of the range is a tenth of the octaves
-    expect(modulate(cutoff, 200, 5)).toBeCloseTo(18000, 6);
+    expect(toUnit(cutoff, 4000)).toBeCloseTo(1, 6);
+    expect(cutoff.bend).toBe(true); // inverse logarithmic: the position is the square root of the octave fraction
+    expect(fromUnit(cutoff, 0.5)).toBeCloseTo(20 * Math.pow(200, 0.25), 3);
+    expect(toUnit(cutoff, fromUnit(cutoff, 0.3))).toBeCloseTo(0.3, 9);
+    expect(modulate(cutoff, 200, 5)).toBeCloseTo(4000, 6);
     const level = DEFS.osc.params.find((q) => q.name === 'level')!;
     expect(modulate(level, 0.5, 0.25)).toBeCloseTo(0.75, 9); // the others stay linear
+  });
+
+  it('K1 moves the filter cutoff the same way in every factory preset: 20..4000 Hz over the whole knob', () => {
+    const cutoff = DEFS.filter.params.find((q) => q.name === 'cutoff')!;
+    for (const [name, make] of Object.entries(PRESETS)) {
+      const p = make();
+      const panel = p.modules.find((m) => m.type === 'fm1')!;
+      const flt = p.modules.find((m) => m.type === 'filter');
+      if (!flt) continue;
+      const cable = p.cables.find((c) => c.from.module === panel.id && c.from.port === 'k1' && c.to.module === flt.id);
+      expect(cable, `${name}: K1 reaches the filter`).toBeTruthy();
+      const pin = cable!.to.port === 'p1' ? 0 : 1;
+      expect(flt.map![pin === 0 ? 'p1' : 'p2'], name).toEqual(['cutoff']);
+      expect(flt.att![pin], `${name}: full attenuverter`).toBe(1);
+      expect(flt.params.cutoff, `${name}: K1 = 0 is the bottom`).toBeCloseTo(cutoff.min, 6);
+      expect(modulate(cutoff, flt.params.cutoff, 1), name).toBeCloseTo(cutoff.max, 3); // K1 = 1 is the top
+    }
   });
 
   it('the factory presets route the knobs: K1 is the filter cutoff, K4 the delay mix, K3 the reverb mix', () => {
@@ -367,9 +384,11 @@ describe('filter', () => {
   });
 
   it('loads old patches whose cables leave the filter at "lp"', () => {
-    const p = PRESETS['Subtractive saw']();
+    const p = PRESETS['303 Acid']();
     const q = JSON.parse(JSON.stringify(p));
-    for (const c of q.cables) if (c.from.port === 'lp12') c.from.port = 'lp';
-    expect(validatePatch(q, DEFS).cables.some((c) => c.from.port === 'lp12')).toBe(true);
+    const flt = q.modules.find((m: { type: string }) => m.type === 'filter').id;
+    const cable = q.cables.find((c: { from: { module: number } }) => c.from.module === flt);
+    cable.from.port = 'lp'; // what an old patch calls the 12 dB output
+    expect(validatePatch(q, DEFS).cables.find((c) => c.from.module === flt)!.from.port).toBe('lp12');
   });
 });

@@ -8,7 +8,7 @@
 #define ENG_SR 44100u
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 5
+#define ENG_PATCH_VERSION 6
 
 /* Install a patch from its binary form (web/src/patchbin.ts). 0 on success, negative on error (the engine is then
  * silent). Resets all module state. Never call while eng_render runs (stop the audio ISR's call first). */
@@ -27,6 +27,8 @@ uint32_t eng_map(uint32_t module, uint32_t source);
 /* the parameters knob k (0..3) changes while the module is selected: its matrix column, and on the modules without a
  * matrix (fm1, output) the k-th parameter */
 uint32_t eng_knob_mask(uint32_t module, uint32_t knob);
+/* the FM-1 panel module whose knob k drives parameter j of `module` through a cable (then the knob, not the parameter, is turned), else -1 */
+int eng_knob_panel(uint32_t module, uint32_t knob, uint32_t j);
 /* the value of a parameter after `clicks` knob clicks of `unit_per_click` (Q16 fraction of the range; octaves for the cutoff) */
 int32_t eng_step_param(uint32_t module, uint32_t param, int32_t clicks, int32_t unit_per_click);
 int eng_param_is_log(uint32_t module, uint32_t param);

@@ -274,9 +274,9 @@ const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }>
     type: 'filter',
     label: 'Filter',
     inputs: [audio('in'), control('cv'), control('morph')],
-    outputs: [audio('lp12'), audio('bp'), audio('hp'), audio('lp24'), audio('mix')],
+    outputs: [audio('lp24'), audio('lp12'), audio('bp'), audio('hp'), audio('mix')],
     params: [
-      param('cutoff', 20, 18000, 1200, { unit: 'Hz', step: 1, log: true }),
+      param('cutoff', 20, 4000, 1200, { unit: 'Hz', step: 1, log: true, bend: true }),
       param('res', 0, 1, 0.2, { step: 0.01 }),
       param('cvamt', 0, 4, 1, { unit: 'oct', step: 0.01 }),
       param('track', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),

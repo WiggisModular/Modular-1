@@ -45,7 +45,7 @@ w('    const int32_t *pmin, *pmax, *pdef, *pinc;   /* Q16.16; pinc: what one kno
 w('    const char *name;       /* upper case, for the LCD */');
 w('    const char *const *pname;');
 w('    const char *const *inname;              /* input names, upper case */');
-w('    const uint8_t *plog;                    /* 1: a logarithmic parameter (the filter cutoff) */');
+w('    const uint8_t *plog;                    /* 1: a logarithmic parameter, 2: logarithmic and bent (the filter cutoff) */');
 w('    const char *const *punit;               /* "HZ", "ST", ... or "" */');
 w('    const char *const *const *pchoice;      /* per parameter: the names of a choice parameter (0-terminated), or 0 */');
 w('} def_t;');
@@ -60,7 +60,7 @@ for (const t of TYPE_ORDER) {
   w(`static const int32_t ${up(t)}_DEF[] = {${row((p) => p.default)}};`);
   w(`static const int32_t ${up(t)}_INC[] = {${row((p) => Math.max(p.step ?? 0, (p.max - p.min) / 100))}};`);
   w(`static const char *const ${up(t)}_PN[] = {${ps.map((p) => `"${p.name.toUpperCase()}"`).join(', ')}};`);
-  w(`static const uint8_t ${up(t)}_LOG[] = {${ps.map((p) => (p.log ? 1 : 0)).join(', ')}};`);
+  w(`static const uint8_t ${up(t)}_LOG[] = {${ps.map((p) => (p.log ? (p.bend ? 2 : 1) : 0)).join(', ')}};`);
   w(`static const char *const ${up(t)}_UNIT[] = {${ps.map((p) => `"${(p.unit ?? '').toUpperCase()}"`).join(', ')}};`);
   ps.forEach((p, i) => {
     if (p.choices) w(`static const char *const ${up(t)}_CH${i}[] = {${p.choices.map((c) => `"${c.toUpperCase()}"`).join(', ')}, 0};`);

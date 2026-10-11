@@ -135,14 +135,31 @@ static uint32_t exp2_q16(int32_t e)
     return m > 0x7FFFFFFFu ? 0x7FFFFFFFu : (uint32_t)m;
 }
 
-/* a parameter's position in its range as Q16 0..1: linear, or logarithmic for the cutoff */
+static uint32_t isqrt32(uint32_t x)
+{
+    uint32_t r = 0, b = 1u << 30;
+    while (b > x)
+        b >>= 2;
+    for (; b; b >>= 2) {
+        if (x >= r + b) {
+            x -= r + b;
+            r = (r >> 1) + b;
+        } else
+            r >>= 1;
+    }
+    return r;
+}
+
+/* a parameter's position in its range as Q16 0..1: linear, or logarithmic for the cutoff (plog 2: bent, the position is
+ * the square root of the octave fraction, so the low end gets more of the knob) */
 static int32_t unit_of(const def_t *d, uint32_t j, int32_t v)
 {
     int32_t lo = d->pmin[j], hi = d->pmax[j];
     v = clampi(v, lo, hi);
     if (d->plog && d->plog[j]) {
         int32_t l0 = log2_q16((uint32_t)lo);
-        return (int32_t)(((int64_t)(log2_q16((uint32_t)v) - l0) << 16) / (log2_q16((uint32_t)hi) - l0));
+        int32_t t = (int32_t)(((int64_t)(log2_q16((uint32_t)v) - l0) << 16) / (log2_q16((uint32_t)hi) - l0));
+        return d->plog[j] == 2 ? (int32_t)isqrt32((uint32_t)t << 16) : t;
     }
     return (int32_t)(((int64_t)(v - lo) << 16) / (hi - lo));
 }
@@ -152,8 +169,8 @@ static int32_t value_of(const def_t *d, uint32_t j, int32_t u)
     int32_t lo = d->pmin[j], hi = d->pmax[j];
     u = clampi(u, 0, ENG_ONE);
     if (d->plog && d->plog[j]) {
-        int32_t l0 = log2_q16((uint32_t)lo);
-        return clampi((int32_t)exp2_q16(l0 + (int32_t)(((int64_t)u * (log2_q16((uint32_t)hi) - l0)) >> 16)), lo, hi);
+        int32_t l0 = log2_q16((uint32_t)lo), t = d->plog[j] == 2 ? (int32_t)(((int64_t)u * u) >> 16) : u;
+        return clampi((int32_t)exp2_q16(l0 + (int32_t)(((int64_t)t * (log2_q16((uint32_t)hi) - l0)) >> 16)), lo, hi);
     }
     return lo + (int32_t)(((int64_t)u * (hi - lo)) >> 16);
 }
@@ -394,6 +411,31 @@ uint32_t eng_knob_mask(uint32_t module, uint32_t knob)
     if (d->cvbase >= 0)
         return E.node[module].map[2u + knob];
     return knob < d->npar ? 1u << knob : 0u;
+}
+
+/* Is parameter j of `module` driven by a cable from the FM-1 panel's knob k (a K1..K4 output into p1 or p2, whose matrix column
+ * has j)? Then turning that knob while `module` is selected must move the panel's knob, not the base value: the two would add up
+ * (and clamp), and the knob would seem to jam at the end of the range. Returns the panel's module index or -1. */
+int eng_knob_panel(uint32_t module, uint32_t knob, uint32_t j)
+{
+    const def_t *d;
+    uint32_t c;
+    if (module >= E.nmod || knob >= 4u)
+        return -1;
+    d = &DEFS[E.node[module].type];
+    if (d->cvbase < 0)
+        return -1;
+    for (c = 0; c < E.ncab; c++) {
+        uint32_t pin;
+        if (E.to_m[c] != module || E.to_p[c] < (uint32_t)d->cvbase || E.to_p[c] > (uint32_t)d->cvbase + 1u)
+            continue;
+        if (E.node[E.from_m[c]].type != T_FM1 || E.from_p[c] != FM1_O_K1 + knob)
+            continue;
+        pin = E.to_p[c] - (uint32_t)d->cvbase;
+        if (E.node[module].map[pin] >> j & 1u)
+            return (int)E.from_m[c];
+    }
+    return -1;
 }
 
 int eng_ncables(void) { return E.loaded ? E.ncab : 0; }

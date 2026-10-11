@@ -44,7 +44,7 @@ Benchmark (`firmware/src/bench.c`, numbers in docs/ARCHITECTURE.md): no FPU, flo
 
 ## Patch transfer (M1-0.3, host-tested, NOT yet run on the device)
 
-- SysEx protocol in `web/src/protocol.ts` (documented there) <-> `firmware/src/proto.c`; hooks and flash store in `main.c` / `patchstore.c`; browser side `web/src/device.ts` + toolbar in `index.html`/`main.ts`; terminal tool `tools/m1_link.py` (`info`, `upload build/golden/303-acid.m1p`, `param`, `store`, `note`).
+- SysEx protocol in `web/src/protocol.ts` (documented there) <-> `firmware/src/proto.c`; hooks and flash store in `main.c` / `patchstore.c`; browser side `web/src/device.ts` + toolbar in `index.html`/`main.ts`; terminal tool `tools/m1_link.py` (`info`, `upload build/golden/303-acid.m1p`, `param`, `store`, `note`, `bank` = write the 32 factory presets from `presets.h` into the flash bank, `bank-info`, `bank-clear`; the bank commands are untested on the device).
 - First thing to do after flashing M1-0.3: `nix develop -c python3 tools/m1_link.py info`, then upload, param, store, power-cycle (the stored patch must come back: label `STORED PATCH`). Flash writes by the app (sectors 0x97000/0x98000) have never run on the device.
 
 ## Parameter inputs + matrix + module select (M1-0.6, host-tested; device UI not yet seen)
@@ -66,8 +66,13 @@ Benchmark (`firmware/src/bench.c`, numbers in docs/ARCHITECTURE.md): no FPU, flo
 - Buttons: OCT- (id 0) / OCT+ (id 1) octave shift of the keys, SAVE (id 9) stores the state (patch + octave + selected module + preset) via `m1_store`; other buttons show `BTN n` in the header (ids from Felucca's panel table: only PLAY/REC were measured, SAVE may differ: check on the device).
 - LCD rewritten in `firmware/src/ui.c`; preview without a device: `nix develop -c tools/ui_preview.sh out.png PRESET [MODULE [OCTAVE]]`. Font now has + % & > = ( ) ? ! # * < , _ '.
 - Choice names / units / input names / log flags are generated into `defs.h` (`export-defs.ts`).
-- New module `reverb`; patch binary format 4; filter cutoff is logarithmic (`ParamDef.log`); `KNOBS` table in `presets.ts` routes K1..K4 in all 32 presets (rules in docs/ARCHITECTURE.md).
+- New module `reverb`; patch binary format 4; filter cutoff is logarithmic (`ParamDef.log`); each preset in `presets.ts` ends with plain `wire(kb, 'kN', module, 'p1'|'p2')` lines for K1..K4 (the module's `add` has the base value, `map` and `att`; the panel's `add` the k1..k4 start positions; `voice()` returns `[vca, adsr]` and takes optional opts for both) (rules in docs/ARCHITECTURE.md).
 - Pool use is 318 KB of 368 KB (signal buffers, 2 delays, 2 reverbs, the LCD picture buffer).
+
+## Filter rework (host-tested, golden 42 patches pass; not flashed)
+
+- Module `filter` (label now just "Filter", it was "SVF filter"): outputs in this order `lp24`, `lp12` (was `lp`, old patches are migrated in `validatePatch`), `bp`, `hp`, `mix`; input `morph` (after `cv`); params `track` (check box, `ParamDef.toggle`; cutoff follows the played pitch 1 oct/oct, C4 = cutoff as set, per block) and `morph` (0 = 24 dB LP .. 1 = HP, plus the input, clamped). lp24 = a second SVF stage on lp12, damped (k = sqrt 2), so the resonance comes from stage 1. `hp` is the 12 dB high pass of stage 1.
+- Binary patch format is now 6 (5: port indices after `cv` moved, 2 new params; 6: filter output order); old stored patches fall back to factory patch 0.
 
 ## Flash tab (simplified)
 

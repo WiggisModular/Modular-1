@@ -26,6 +26,8 @@ export interface ParamDef {
   /** logarithmic: the range is covered in equal ratios (a filter cutoff in octaves). Modulation and the knobs move the value in
    * that space: a fraction of the range is a fraction of the octaves. */
   log?: boolean;
+  /** with `log`: the position is the square root of the octave fraction (an inverse logarithmic bend: the low end gets more of the knob / slider travel) */
+  bend?: boolean;
   /** an on/off switch (0 or 1): a check box in the editor, OFF / ON on the LCD */
   toggle?: boolean;
 }
@@ -33,12 +35,15 @@ export interface ParamDef {
 /** position of a value in its range, 0..1 (logarithmic for log parameters) */
 export function toUnit(pd: ParamDef, v: number): number {
   const x = Math.min(pd.max, Math.max(pd.min, v));
-  return pd.log ? Math.log(x / pd.min) / Math.log(pd.max / pd.min) : (x - pd.min) / (pd.max - pd.min);
+  if (!pd.log) return (x - pd.min) / (pd.max - pd.min);
+  const t = Math.log(x / pd.min) / Math.log(pd.max / pd.min);
+  return pd.bend ? Math.sqrt(t) : t;
 }
 
 export function fromUnit(pd: ParamDef, u: number): number {
   const x = Math.min(1, Math.max(0, u));
-  return pd.log ? pd.min * Math.pow(pd.max / pd.min, x) : pd.min + x * (pd.max - pd.min);
+  if (!pd.log) return pd.min + x * (pd.max - pd.min);
+  return pd.min * Math.pow(pd.max / pd.min, pd.bend ? x * x : x);
 }
 
 /** a parameter's base value moved by `mod` of its range (mean of a parameter input x attenuverter), clamped */

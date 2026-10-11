@@ -58,9 +58,25 @@ kit('noise-svf', (add, wire) => {
   const mix = add('mixer', 0, 0, { l1: 0.5, l2: 0.5, l3: 0.5 });
   const out = add('output', 0, 0, { level: 0.8 });
   wire(nz, 'out', flt, 'in');
-  wire(flt, 'lp', mix, 'in1');
+  wire(flt, 'lp12', mix, 'in1');
   wire(flt, 'bp', mix, 'in2');
   wire(flt, 'hp', mix, 'in3');
+  wire(mix, 'out', out, 'l');
+});
+kit('filter-morph', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.8 });
+  const lfo = add('lfo', 0, 0, { wave: 1, rate: 1.5, depth: 0.5 });
+  const sc = add('scale', 0, 0, { gain: 0.5, offset: 0.5 });
+  const flt = add('filter', 0, 0, { cutoff: 700, res: 0.5, track: 1, morph: 0.1 });
+  const mix = add('mixer', 0, 0, { l1: 0.5, l2: 0.5 });
+  const out = add('output', 0, 0);
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(osc, 'out', flt, 'in');
+  wire(lfo, 'out', sc, 'in');
+  wire(sc, 'out', flt, 'morph');
+  wire(flt, 'mix', mix, 'in1');
+  wire(flt, 'lp24', mix, 'in2');
   wire(mix, 'out', out, 'l');
 });
 kit('fm1-panel', (add, wire) => {
@@ -128,7 +144,7 @@ kit('matrix-att', (add, wire) => {
   wire(lfo, 'out', flt, 'p1');
   wire(k, 'out', flt, 'p2');
   wire(osc, 'out', flt, 'in');
-  wire(flt, 'lp', out, 'l');
+  wire(flt, 'lp12', out, 'l');
 });
 
 kit('reverb', (add, wire) => {
