@@ -6,6 +6,8 @@ export type SignalKind = 'audio' | 'control' | 'gate';
 export interface PortDef {
   name: string;
   kind: SignalKind;
+  /** shown in the editor instead of `name` */
+  label?: string;
   /** set on the two parameter inputs `p1` and `p2` (1 or 2) */
   pin?: 1 | 2;
 }
@@ -30,6 +32,8 @@ export interface ParamDef {
   bend?: boolean;
   /** an on/off switch (0 or 1): a check box in the editor, OFF / ON on the LCD */
   toggle?: boolean;
+  /** while the toggle parameter `when` is on, the value is shown as `text(value)` instead of the number (the synced delay time as a note length) */
+  altText?: { when: string; text: (v: number) => string };
 }
 
 /** position of a value in its range, 0..1 (logarithmic for log parameters) */

@@ -445,7 +445,11 @@ static void module_draw(int full)
                     nm[l + 1u] = 0;
                 }
                 int32_t eff = eng_get_eff(sel, first);          /* what the sound uses, knobs and cables included */
-                put_param(val, d, first, eff);
+                if (d == &DEFS[T_DELAY] && first == DELAY_P_TIME && eng_get_eff(sel, DELAY_P_SYNC) >= 32768) {
+                    char *v = put(val, DELAY_DIV_NAME[delay_div(eff)]);      /* synced: the time knob picks a note length */
+                    *v = 0;
+                } else
+                    put_param(val, d, first, eff);
                 val[15] = 0;
                 module_row(k, nm, val, 1, (int32_t)param_bar(d, first, eff, LEFT_W));
             }

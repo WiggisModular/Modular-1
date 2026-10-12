@@ -120,14 +120,17 @@ export class Editor {
 
     const params = document.createElement('div');
     params.className = 'params';
+    const refresh: (() => void)[] = [];
     for (const pd of def.params) {
       const row = document.createElement('label');
       row.className = 'param';
       const name = document.createElement('span');
       name.textContent = pd.name;
       const val = document.createElement('output');
-      const fmt = (v: number): string => (pd.choices ? pd.choices[Math.round(v)] : `${Number(v.toFixed(3))}${pd.unit ? ' ' + pd.unit : ''}`);
+      const fmt = (v: number): string =>
+        pd.altText && m.params[pd.altText.when] >= 0.5 ? pd.altText.text(v) : (pd.choices ? pd.choices[Math.round(v)] : `${Number(v.toFixed(3))}${pd.unit ? ' ' + pd.unit : ''}`);
       val.textContent = fmt(m.params[pd.name]);
+      refresh.push(() => (val.textContent = fmt(m.params[pd.name])));
       const input = document.createElement('input');
       input.type = 'range';
       if (pd.log) {
@@ -156,6 +159,7 @@ export class Editor {
           const v = input.checked ? 1 : 0;
           m.params[pd.name] = v;
           val.textContent = fmt(v);
+          refresh.forEach((f) => f());
           this.ev.onParam(m.id, pd.name, v);
         };
       }
@@ -244,9 +248,9 @@ export class Editor {
     dot.dataset.mod = String(m.id);
     dot.dataset.port = p.name;
     dot.dataset.dir = dir;
-    dot.title = `${p.name} (${p.kind})`;
+    dot.title = `${p.label ?? p.name} (${p.kind})`;
     const label = document.createElement('span');
-    label.textContent = p.name;
+    label.textContent = p.label ?? p.name;
     row.append(...(dir === 'in' ? [dot, label] : [label, dot]));
     dot.addEventListener('pointerdown', (e) => this.beginDrag(e, { module: m.id, port: p.name }, dir));
     this.ports.set(this.key(m.id, p.name, dir), dot);

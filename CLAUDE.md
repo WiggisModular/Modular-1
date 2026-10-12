@@ -113,3 +113,11 @@ SysEx over USB MIDI. The device *pulls* blocks: it sends read requests (cmd 0x30
 - Web MIDI + SysEx needs Chrome/Edge and https or localhost.
 - Engine buffers are 128 frames; modules read `ctx.n` (≤128), not `BLOCK`.
 - Keep patch-format changes in `patch.ts` and update `validatePatch`, presets and tests together.
+
+## Delay sync / ping-pong (host-tested, golden pass; not flashed)
+
+- Module `delay`: inputs `in`, `clk`; outputs `out`, `r`; params `time`, `fb`, `mix`, `sync` (toggle), `pingpong` (toggle). Sync: the same `time` knob picks a note length (range split in `DELAY_DIVS`, shortest first: 1/16T .. 1/1, shared with the LFO's `div`; `ParamDef.altText` shows the name, LCD special case in `ui.c`, `delay_div()` in engine.c). Tempo = the last 24 pulses of `clk` (the Main module's clock, 24 ppqn), smoothed; 120 bpm until a clock has come in. Ping-pong: one buffer split in two halves, so the time is limited to ~525 ms then; `out` = left, `r` = right (without ping-pong `r` = `out`); `fb` and `mix` apply to both sides. Binary patch format 8.
+
+## Main clock output (host-tested, golden pass; not flashed)
+
+- Module `fm1` (Main) has a gate output `clock` after `k4` (appended, patch format unchanged). Source: the arpeggiator's 24 ppqn tick while `arp_play`, else MIDI clock (0xF8 from USB or TRS; 0xFC mutes until 0xFA/0xFB), else no output. `eng_clock_tick()` counts ticks; `m_fm1` / `Engine.voice.clock` turn a block that saw a tick into a pulse over its first half (block-quantized, ticks within one block merge). Browser: Web MIDI 0xF8/0xFA/0xFB/0xFC via `input.ts` -> worklet `clock` / `clockrun`.

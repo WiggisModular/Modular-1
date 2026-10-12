@@ -52,6 +52,23 @@ kit('lfo-sh', (add, wire) => {
   wire(sc, 'out', osc, 'p1');
   wire(osc, 'out', out, 'l');
 });
+const lfoKit = (name: string, slave: Record<string, number>, wireIn: (wire: (a: number, ap: string, b: number, bp: string) => void, clk: number, rst: number, lfo: number) => void): void =>
+  kit(name, (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const clk = add('lfo', 0, 0, { wave: 3, rate: 50, depth: 1 });
+    const rst = add('lfo', 0, 0, { wave: 3, rate: 1.7, depth: 1 });
+    const lfo = add('lfo', 0, 0, { wave: 2, depth: 0.8, ...slave });
+    const osc = add('osc', 0, 0, { wave: 3, pw: 0.5, level: 0.8 }, { map: { p1: ['level'], p2: ['pw'] } });
+    const out = add('output', 0, 0);
+    wire(kb, 'pitch', osc, 'pitch');
+    wireIn(wire, clk, rst, lfo);
+    wire(lfo, 'out', osc, 'p1');
+    wire(osc, 'out', out, 'l');
+  });
+lfoKit('lfo-clk', { sync: 1, div: 2 }, (wire, clk, _r, lfo) => wire(clk, 'out', lfo, 'clk'));
+lfoKit('lfo-clk-sh', { sync: 1, div: 4, wave: 4 }, (wire, clk, _r, lfo) => wire(clk, 'out', lfo, 'clk'));
+lfoKit('lfo-bpm', { sync: 1, div: 6, bpm: 140 }, () => undefined);
+lfoKit('lfo-reset', { rate: 5 }, (wire, _c, rst, lfo) => wire(rst, 'out', lfo, 'reset'));
 kit('noise-svf', (add, wire) => {
   const nz = add('noise', 0, 0, { level: 0.6 });
   const flt = add('filter', 0, 0, { cutoff: 900, res: 0.7 });
@@ -103,6 +120,25 @@ kit('delay-fb', (add, wire) => {
   wire(dly, 'out', out, 'l');
   wire(dly, 'out', out, 'r');
 });
+const delayKit = (name: string, params: Record<string, number>): void =>
+  kit(name, (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const osc = add('osc', 0, 0, { wave: 1, level: 0.5 });
+    const env = add('adsr', 0, 0, { a: 0.002, d: 0.05, s: 0, r: 0.05 });
+    const vca = add('vca', 0, 0);
+    const dly = add('delay', 0, 0, { fb: 0.6, mix: 0.5, ...params });
+    const out = add('output', 0, 0);
+    wire(kb, 'pitch', osc, 'pitch');
+    wire(kb, 'gate', env, 'gate');
+    wire(osc, 'out', vca, 'in');
+    wire(env, 'env', vca, 'cv');
+    wire(vca, 'out', dly, 'in');
+    wire(dly, 'out', out, 'l');
+    wire(dly, 'r', out, 'r');
+  });
+delayKit('delay-pingpong', { time: 120, pingpong: 1 });
+delayKit('delay-sync', { sync: 1, div: 5, bpm: 133 });
+delayKit('delay-sync-pingpong', { sync: 1, div: 6, bpm: 90, pingpong: 1 });
 kit('feedback-pm', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const osc = add('osc', 0, 0, { wave: 0, pm: 2 });

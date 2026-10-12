@@ -337,6 +337,7 @@ static void arp_run(uint32_t n)
     AR.acc += n * AR.c.bpm;
     while (AR.acc >= ARP_TICK_NUM) {
         AR.acc -= ARP_TICK_NUM;
+        eng_clock_tick();
         if (++AR.ppq >= ARP_RATE_TICKS[AR.c.rate]) {
             AR.ppq = 0;
             arp_step();

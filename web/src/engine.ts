@@ -28,7 +28,9 @@ export class Engine {
   private order: Node[] = [];
   private outputs: Node[] = [];
   private held: { note: number; vel: number }[] = [];
-  readonly voice: Voice = { pitch: 0, gate: 0, velocity: 0 };
+  readonly voice: Voice = { pitch: 0, gate: 0, velocity: 0, clock: false };
+  private ticks = 0;
+  private clockOn = true;
 
   constructor(readonly sampleRate: number) {}
 
@@ -136,6 +138,15 @@ export class Engine {
     this.updateVoice(false);
   }
 
+  /** MIDI clock (0xF8): one tick; Stop (0xFC) mutes the clock until Start/Continue */
+  clockTick(): void {
+    if (this.clockOn) this.ticks++;
+  }
+
+  clockRun(on: boolean): void {
+    this.clockOn = on;
+  }
+
   allNotesOff(): void {
     this.held = [];
     this.voice.gate = 0;
@@ -160,6 +171,8 @@ export class Engine {
     right.fill(0);
     for (let off = 0; off < total; off += BLOCK) {
       const n = Math.min(BLOCK, total - off);
+      this.voice.clock = this.ticks > 0;
+      this.ticks = 0;
       for (const node of this.order) {
         for (const name in node.inp) node.inp[name].fill(0, 0, n);
         for (const s of node.sources) {

@@ -204,13 +204,23 @@ static void patch_boot(void)                    /* the stored patch if there is 
     preset_load(0);
 }
 
+static uint8_t midi_clk_run = 1;                /* MIDI clock passes until a Stop (0xFC), and again after Start / Continue */
+
 static void midi_drain(void)                    /* USB-MIDI events -> the engine */
 {
     while (mi_r != mi_w) {
         uint32_t pkt = midi_in_q[mi_r % MQ], st = (pkt >> 8) & 0xF0u, n = (pkt >> 16) & 0x7Fu, v = pkt >> 24;
         RING_PUBLISH();
         mi_r++;
-        if (st == 0x90u && v) {
+        if (st == 0xF0u) {                      /* realtime: the clock comes from the arpeggiator while it runs, else from MIDI in */
+            uint32_t rt = (pkt >> 8) & 0xFFu;
+            if (rt == 0xF8u) {
+                if (midi_clk_run && !arp_play)
+                    eng_clock_tick();
+            } else {
+                midi_clk_run = rt != 0xFCu;
+            }
+        } else if (st == 0x90u && v) {
             eng_note_on(n, (int32_t)(v * 65536u / 127u));
         } else if (st == 0x80u || st == 0x90u) {
             eng_note_off(n);

@@ -28,12 +28,13 @@ enum {
 #define FM1_O_K2 4
 #define FM1_O_K3 5
 #define FM1_O_K4 6
+#define FM1_O_CLOCK 7
 #define FM1_P_K1 0
 #define FM1_P_K2 1
 #define FM1_P_K3 2
 #define FM1_P_K4 3
 #define FM1_NIN 0
-#define FM1_NOUT 7
+#define FM1_NOUT 8
 #define FM1_NPAR 4
 #define FM1_CVBASE -1
 
@@ -55,16 +56,21 @@ enum {
 #define OSC_CVBASE 2
 
 /* lfo: LFO */
-#define LFO_I_P1 0
-#define LFO_I_P2 1
+#define LFO_I_CLK 0
+#define LFO_I_RESET 1
+#define LFO_I_P1 2
+#define LFO_I_P2 3
 #define LFO_O_OUT 0
 #define LFO_P_WAVE 0
 #define LFO_P_RATE 1
 #define LFO_P_DEPTH 2
-#define LFO_NIN 2
+#define LFO_P_SYNC 3
+#define LFO_P_DIV 4
+#define LFO_P_BPM 5
+#define LFO_NIN 4
 #define LFO_NOUT 1
-#define LFO_NPAR 3
-#define LFO_CVBASE 0
+#define LFO_NPAR 6
+#define LFO_CVBASE 2
 
 /* noise: Noise */
 #define NOISE_I_P1 0
@@ -164,16 +170,20 @@ enum {
 
 /* delay: Delay */
 #define DELAY_I_IN 0
-#define DELAY_I_P1 1
-#define DELAY_I_P2 2
+#define DELAY_I_CLK 1
+#define DELAY_I_P1 2
+#define DELAY_I_P2 3
 #define DELAY_O_OUT 0
+#define DELAY_O_R 1
 #define DELAY_P_TIME 0
 #define DELAY_P_FB 1
 #define DELAY_P_MIX 2
-#define DELAY_NIN 3
-#define DELAY_NOUT 1
-#define DELAY_NPAR 3
-#define DELAY_CVBASE 1
+#define DELAY_P_SYNC 3
+#define DELAY_P_PINGPONG 4
+#define DELAY_NIN 4
+#define DELAY_NOUT 2
+#define DELAY_NPAR 5
+#define DELAY_CVBASE 2
 
 /* reverb: Reverb */
 #define REVERB_I_IN 0
@@ -197,8 +207,14 @@ enum {
 #define OUTPUT_NPAR 1
 #define OUTPUT_CVBASE -1
 
+#define DELAY_NDIV 11
+#define DELAY_CLK_PPQN 24
+static const uint8_t DELAY_DIV_NUM[DELAY_NDIV] = {1, 1, 1, 3, 1, 3, 1, 3, 2, 5, 4};
+static const uint8_t DELAY_DIV_DEN[DELAY_NDIV] = {6, 4, 3, 8, 2, 4, 1, 2, 1, 2, 1};
+static const char *const DELAY_DIV_NAME[DELAY_NDIV] = {"1/16T", "1/16", "1/8T", "1/16.", "1/8", "1/8.", "1/4", "3/8", "1/2", "5/8", "1/1"};
+
 #define MAX_IN 6
-#define MAX_OUT 7
+#define MAX_OUT 8
 #define MAX_PAR 6
 
 typedef struct {
@@ -232,16 +248,18 @@ static const uint8_t OSC_LOG[] = {0, 0, 0, 0, 0, 0};
 static const char *const OSC_UNIT[] = {"", "", "ST", "CT", "", ""};
 static const char *const OSC_CH0[] = {"SINE", "TRIANGLE", "SAW", "SQUARE", 0};
 static const char *const *const OSC_CH[] = {OSC_CH0, 0, 0, 0, 0, 0};
-static const char *const LFO_INNAMES[] = {"P1", "P2"};
-static const int32_t LFO_MIN[] = {0, 1311, 0};
-static const int32_t LFO_MAX[] = {262144, 2621440, 65536};
-static const int32_t LFO_DEF[] = {0, 262144, 65536};
-static const int32_t LFO_INC[] = {65536, 26201, 655};
-static const char *const LFO_PN[] = {"WAVE", "RATE", "DEPTH"};
-static const uint8_t LFO_LOG[] = {0, 0, 0};
-static const char *const LFO_UNIT[] = {"", "HZ", ""};
+static const char *const LFO_INNAMES[] = {"CLK", "RESET", "P1", "P2"};
+static const int32_t LFO_MIN[] = {0, 1311, 0, 0, 0, 2621440};
+static const int32_t LFO_MAX[] = {262144, 2621440, 65536, 65536, 655360, 19660800};
+static const int32_t LFO_DEF[] = {0, 262144, 65536, 0, 393216, 7864320};
+static const int32_t LFO_INC[] = {65536, 26201, 655, 65536, 65536, 170394};
+static const char *const LFO_PN[] = {"WAVE", "RATE", "DEPTH", "SYNC", "DIV", "BPM"};
+static const uint8_t LFO_LOG[] = {0, 0, 0, 0, 0, 0};
+static const char *const LFO_UNIT[] = {"", "HZ", "", "", "", ""};
 static const char *const LFO_CH0[] = {"SINE", "TRIANGLE", "SAW", "SQUARE", "S&H", 0};
-static const char *const *const LFO_CH[] = {LFO_CH0, 0, 0};
+static const char *const LFO_CH3[] = {"FREE", "SYNC", 0};
+static const char *const LFO_CH4[] = {"1/16T", "1/16", "1/8T", "1/16.", "1/8", "1/8.", "1/4", "3/8", "1/2", "5/8", "1/1", 0};
+static const char *const *const LFO_CH[] = {LFO_CH0, 0, 0, LFO_CH3, LFO_CH4, 0};
 static const char *const NOISE_INNAMES[] = {"P1", "P2"};
 static const int32_t NOISE_MIN[] = {0};
 static const int32_t NOISE_MAX[] = {65536};
@@ -306,15 +324,17 @@ static const char *const MIXER_PN[] = {"L1", "L2", "L3", "L4"};
 static const uint8_t MIXER_LOG[] = {0, 0, 0, 0};
 static const char *const MIXER_UNIT[] = {"", "", "", ""};
 static const char *const *const MIXER_CH[] = {0, 0, 0, 0};
-static const char *const DELAY_INNAMES[] = {"IN", "P1", "P2"};
-static const int32_t DELAY_MIN[] = {65536, 0, 0};
-static const int32_t DELAY_MAX[] = {65536000, 62259, 65536};
-static const int32_t DELAY_DEF[] = {16384000, 26214, 19661};
-static const int32_t DELAY_INC[] = {654705, 655, 655};
-static const char *const DELAY_PN[] = {"TIME", "FB", "MIX"};
-static const uint8_t DELAY_LOG[] = {0, 0, 0};
-static const char *const DELAY_UNIT[] = {"MS", "", ""};
-static const char *const *const DELAY_CH[] = {0, 0, 0};
+static const char *const DELAY_INNAMES[] = {"IN", "CLK", "P1", "P2"};
+static const int32_t DELAY_MIN[] = {65536, 0, 0, 0, 0};
+static const int32_t DELAY_MAX[] = {65536000, 62259, 65536, 65536, 65536};
+static const int32_t DELAY_DEF[] = {16384000, 26214, 19661, 0, 0};
+static const int32_t DELAY_INC[] = {654705, 655, 655, 65536, 65536};
+static const char *const DELAY_PN[] = {"TIME", "FB", "MIX", "SYNC", "PINGPONG"};
+static const uint8_t DELAY_LOG[] = {0, 0, 0, 0, 0};
+static const char *const DELAY_UNIT[] = {"MS", "", "", "", ""};
+static const char *const DELAY_CH3[] = {"FREE", "SYNC", 0};
+static const char *const DELAY_CH4[] = {"OFF", "ON", 0};
+static const char *const *const DELAY_CH[] = {0, 0, 0, DELAY_CH3, DELAY_CH4};
 static const char *const REVERB_INNAMES[] = {"IN", "P1", "P2"};
 static const int32_t REVERB_MIN[] = {0, 0, 0};
 static const int32_t REVERB_MAX[] = {65536, 65536, 65536};

@@ -392,3 +392,43 @@ describe('filter', () => {
     expect(validatePatch(q, DEFS).cables.find((c) => c.from.module === flt)!.from.port).toBe('lp12');
   });
 });
+
+describe('delay sync and ping-pong', () => {
+  const run = (params: Record<string, number>, clockEvery: number | null) => {
+    const p = emptyPatch();
+    const kb = addModule(p, DEFS.fm1, 0, 0);
+    const c1 = addModule(p, DEFS.const, 0, 0);
+    c1.params.value = 1;
+    const dly = addModule(p, DEFS.delay, 0, 0);
+    Object.assign(dly.params, { fb: 0, mix: 1, ...params });
+    const out = addModule(p, DEFS.output, 0, 0);
+    connect(p, DEFS, { module: c1.id, port: 'out' }, { module: dly.id, port: 'in' });
+    if (clockEvery) connect(p, DEFS, { module: kb.id, port: 'clock' }, { module: dly.id, port: 'clk' });
+    connect(p, DEFS, { module: dly.id, port: 'out' }, { module: out.id, port: 'l' });
+    connect(p, DEFS, { module: dly.id, port: 'r' }, { module: out.id, port: 'r' });
+    const e = new Engine(44100);
+    e.load(p);
+    const l = new Float32Array(128);
+    const r = new Float32Array(128);
+    const first: number[] = [];
+    let ticks = 0;
+    for (let b = 0; b < 700; b++) {
+      if (clockEvery) while (ticks < (b + 1) * 128) { if (ticks >= b * 128) e.clockTick(); ticks += clockEvery; }
+      e.render(l, r);
+      first.push(l[0]);
+    }
+    return { l, r, first };
+  };
+  it('a synced delay follows the clock: 1/4 is one beat', () => {
+    // 24 ticks per beat, a tick every 460 samples = 11040 samples per beat; the delayed constant 1 appears after that
+    const { first } = run({ sync: 1, time: 1 + (6 / 10) * 999 }, 460);
+    const at = first.findIndex((v) => v > 0.5);
+    expect(at * 128).toBeGreaterThan(11040 - 400);
+    expect(at * 128).toBeLessThan(11040 + 400);
+  });
+  it('ping-pong uses mix and fb on both sides', () => {
+    const a = run({ pingpong: 1, time: 5, fb: 0.5, mix: 0.5 }, null);
+    expect(a.l[127]).toBeGreaterThan(0.4);
+    expect(a.r[127]).toBeGreaterThan(0.4);
+  });
+});

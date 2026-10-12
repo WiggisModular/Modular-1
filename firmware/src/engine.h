@@ -8,12 +8,13 @@
 #define ENG_SR 44100u
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 6
+#define ENG_PATCH_VERSION 8
 
 /* Install a patch from its binary form (web/src/patchbin.ts). 0 on success, negative on error (the engine is then
  * silent). Resets all module state. Never call while eng_render runs (stop the audio ISR's call first). */
 int eng_load(const uint8_t *p, uint32_t len);
 void eng_set_param(uint32_t module, uint32_t param, int32_t q16);
+uint32_t delay_div(int32_t time_q16);                               /* the note length (DELAY_DIV_*) a synced delay's time value selects */
 int32_t eng_get_param(uint32_t module, uint32_t param);
 int32_t eng_get_eff(uint32_t module, uint32_t param);               /* what the last block used: base + modulation */
 void eng_set_att(uint32_t module, uint32_t input, int32_t q16);      /* attenuverter of p1 / p2, Q16 */
@@ -37,5 +38,7 @@ int eng_find(uint32_t type);
 void eng_note_on(uint32_t note, int32_t vel_q16);
 void eng_note_off(uint32_t note);
 void eng_all_notes_off(void);
+/* one clock tick (24 per quarter note); the Main module's clock output pulses once per block that saw one */
+void eng_clock_tick(void);
 /* n frames of stereo, Q16, clamped to +-1.0; any n, processed in blocks of ENG_BLOCK */
 void eng_render(int32_t *l, int32_t *r, uint32_t n);

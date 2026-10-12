@@ -186,11 +186,11 @@ typedef struct {
     sig_t *out[MAX_OUT];
     union {
         struct { uint32_t phase; } osc;
-        struct { uint32_t phase, seed; int32_t held; } lfo;
+        struct { uint32_t phase, seed; int32_t held; uint32_t since; int32_t interval; uint16_t ticks; uint8_t clk_hi, rst_hi; } lfo;   /* interval: clock edge distance in samples, Q8 */
         struct { uint32_t seed; } noise;
         struct { int32_t v; uint8_t stage, prev; } adsr;
         struct { int32_t ic1, ic2, jc1, jc2; } flt;   /* stage 1 and stage 2 integrators */
-        struct { int16_t *buf; uint32_t w; } dly;
+        struct { int16_t *buf; uint32_t w, t, seen, beat; uint32_t ring[DELAY_CLK_PPQN]; uint8_t prev; } dly;
         struct { int16_t *buf; uint16_t ci[4], ai[2]; int32_t lp[4]; } rev;
     } s;
 } node_t;
@@ -211,6 +211,8 @@ static struct {
     struct { uint8_t note; int32_t vel; } held[MAX_HELD];
     uint8_t nheld;
     struct { int32_t pitch, gate, vel; } voice;
+    volatile uint32_t clk_ticks;     /* clock ticks (24 ppqn) counted by eng_clock_tick, from the arpeggiator or MIDI in */
+    uint32_t clk_seen;
 } E;
 
 static sig_t buf_pool[ENG_NBUF][ENG_BLOCK] ENG_POOL;
@@ -252,6 +254,7 @@ static void init_state(node_t *nd)
     switch (nd->type) {
     case T_LFO:
         nd->s.lfo.seed = 0x2545f491u;
+        nd->s.lfo.since = ENG_SR;
         break;
     case T_NOISE:
         nd->s.noise.seed = 0x1234567u;
@@ -276,6 +279,7 @@ int eng_load(const uint8_t *p, uint32_t len)
     E.loaded = 0;
     E.nheld = 0;
     E.voice.pitch = E.voice.gate = E.voice.vel = 0;
+    E.clk_seen = E.clk_ticks;
     if (len < 8u || p[0] != 0xA1 || p[1] != ENG_PATCH_VERSION)
         return -1;
     E.nmod = p[2];
@@ -319,6 +323,8 @@ int eng_load(const uint8_t *p, uint32_t len)
             if (E.ndly >= ENG_NDELAY)
                 return -4;
             nd->s.dly.buf = dly_pool[E.ndly++];
+            nd->s.dly.t = nd->s.dly.seen = nd->s.dly.prev = 0;
+            nd->s.dly.beat = ENG_SR / 2u;             /* 120 bpm until a clock has come in */
             for (j = 0; j < DELAY_LEN; j++)
                 nd->s.dly.buf[j] = 0;
         }
@@ -542,6 +548,11 @@ void eng_note_on(uint32_t note, int32_t vel_q16)
     update_voice();
 }
 
+void eng_clock_tick(void)
+{
+    E.clk_ticks++;
+}
+
 void eng_all_notes_off(void)
 {
     E.nheld = 0;
@@ -568,6 +579,12 @@ static void m_fm1(node_t *nd, uint32_t n)
     fill(nd->out[FM1_O_K2], EF(nd, FM1_P_K2), n);
     fill(nd->out[FM1_O_K3], EF(nd, FM1_P_K3), n);
     fill(nd->out[FM1_O_K4], EF(nd, FM1_P_K4), n);
+    {                                   /* clock: a pulse of half a block per block that saw a tick; nothing without a source */
+        uint32_t hi = E.clk_seen != E.clk_ticks ? (n + 1u) / 2u : 0u, i;
+        E.clk_seen = E.clk_ticks;
+        for (i = 0; i < n; i++)
+            nd->out[FM1_O_CLOCK][i] = i < hi ? ENG_ONE : 0;
+    }
 }
 
 static void m_osc(node_t *nd, uint32_t n)
@@ -591,18 +608,60 @@ static void m_osc(node_t *nd, uint32_t n)
     nd->s.osc.phase = phase;
 }
 
+static void lfo_cycle(node_t *nd)
+{
+    nd->s.lfo.seed = nd->s.lfo.seed * 1664525u + 1013904223u;
+    nd->s.lfo.held = (int32_t)(nd->s.lfo.seed >> 15) - ENG_ONE;
+}
+
+/* free: rate in Hz. sync: one cycle per note length (DELAY_DIV_NUM / DELAY_DIV_DEN, as the delay) that snaps to every n-th edge of clk
+ * (24 ppqn, n = ticks per cycle), runs at the measured clock speed in between and at bpm when there is no clock. */
 static void m_lfo(node_t *nd, uint32_t n)
 {
     sig_t *out = nd->out[0];
-    uint32_t dt = (uint32_t)(((uint64_t)(uint32_t)EF(nd, LFO_P_RATE) << 16) / ENG_SR), phase = nd->s.lfo.phase, i;
+    const sig_t *clk = nd->in[LFO_I_CLK], *rst = nd->in[LFO_I_RESET];
+    uint32_t dtfree = (uint32_t)(((uint64_t)(uint32_t)EF(nd, LFO_P_RATE) << 16) / ENG_SR), phase = nd->s.lfo.phase, i, dt;
     int32_t kind = round_q16(EF(nd, LFO_P_WAVE)), depth = EF(nd, LFO_P_DEPTH);
+    int sync = EF(nd, LFO_P_SYNC) >= 32768;
+    int32_t div = clampi((EF(nd, LFO_P_DIV) + 32768) >> 16, 0, DELAY_NDIV - 1), bpm = EF(nd, LFO_P_BPM);
+    uint32_t per = 24u * DELAY_DIV_NUM[div] / DELAY_DIV_DEN[div], dtbpm;
+    if (bpm < 65536)
+        bpm = 65536;
+    dtbpm = (uint32_t)(((uint64_t)(uint32_t)bpm * DELAY_DIV_DEN[div] << 16) / (60u * DELAY_DIV_NUM[div] * ENG_SR));
     for (i = 0; i < n; i++) {
         uint32_t prev = phase;
         int32_t w;
+        int c = clk[i] >= 32768, r = rst[i] >= 32768, live;
+        if (nd->s.lfo.since < ENG_SR)
+            nd->s.lfo.since++;
+        if (c && !nd->s.lfo.clk_hi) {
+            int32_t d8 = (int32_t)(nd->s.lfo.since << 8);
+            if (nd->s.lfo.since >= ENG_SR / 2)
+                nd->s.lfo.interval = 0;
+            else
+                nd->s.lfo.interval = nd->s.lfo.interval > 0 ? nd->s.lfo.interval + (d8 - nd->s.lfo.interval) / 8 : d8;
+            nd->s.lfo.since = 0;
+            if (sync && ++nd->s.lfo.ticks >= per) {
+                nd->s.lfo.ticks = 0;
+                phase = prev = 0;
+                lfo_cycle(nd);
+            }
+        }
+        nd->s.lfo.clk_hi = (uint8_t)c;
+        if (r && !nd->s.lfo.rst_hi) {
+            phase = prev = 0;
+            nd->s.lfo.ticks = 0;
+            lfo_cycle(nd);
+        }
+        nd->s.lfo.rst_hi = (uint8_t)r;
+        live = sync && nd->s.lfo.interval > 0 && nd->s.lfo.since < ENG_SR / 2;
+        dt = !sync ? dtfree : live ? (uint32_t)((1ull << 40) / ((uint64_t)per * (uint32_t)nd->s.lfo.interval)) : dtbpm;
         phase += dt;
-        if (phase < prev) {                 /* a new cycle: sample & hold takes a new random value */
-            nd->s.lfo.seed = nd->s.lfo.seed * 1664525u + 1013904223u;
-            nd->s.lfo.held = (int32_t)(nd->s.lfo.seed >> 15) - ENG_ONE;
+        if (phase < prev) {
+            if (live)
+                phase = 0xFFFFFFFFu;        /* wait for the clock's next cycle start */
+            else
+                lfo_cycle(nd);              /* a new cycle: sample & hold takes a new random value */
         }
         w = kind == 4 ? nd->s.lfo.held : wave(kind, phase, dt, 0x80000000u);
         out[i] = mul16(w, depth);
@@ -821,22 +880,74 @@ static inline int16_t dly_pack(int32_t v)
     return (int16_t)clampi(q, -32768, 32767);
 }
 
+#define DELAY_HALF (DELAY_LEN / 2u)
+
+/* the note length the time knob selects while the delay is synced: its range split into DELAY_NDIV steps (also used by the LCD) */
+uint32_t delay_div(int32_t time_q16)
+{
+    int64_t lo = DEFS[T_DELAY].pmin[DELAY_P_TIME], range = DEFS[T_DELAY].pmax[DELAY_P_TIME] - lo;
+    int64_t i = (((int64_t)time_q16 - lo) * (DELAY_NDIV - 1) * 2 + range) / (range * 2);
+    return (uint32_t)(i < 0 ? 0 : i > DELAY_NDIV - 1 ? DELAY_NDIV - 1 : i);
+}
+
+/* free or synced time (see modules.ts); ping-pong splits the buffer in two halves, A (input, left) and B (right), see modules.ts */
 static void m_delay(node_t *nd, uint32_t n)
 {
     const sig_t *in = nd->in[DELAY_I_IN];
-    sig_t *out = nd->out[0];
+    sig_t *out = nd->out[DELAY_O_OUT], *outr = nd->out[DELAY_O_R];
     int16_t *buf = nd->s.dly.buf;
     uint32_t w = nd->s.dly.w, i, d;
     int32_t fb = EF(nd, DELAY_P_FB), mix = EF(nd, DELAY_P_MIX), dry = ENG_ONE - mix;
-    int64_t smp = ((int64_t)EF(nd, DELAY_P_TIME) * ENG_SR + (int64_t)500 * 65536) / (1000 * 65536);   /* round(t_ms / 1000 * sr) */
-    d = (uint32_t)(smp < 1 ? 1 : smp > (int64_t)DELAY_LEN - 1 ? (int64_t)DELAY_LEN - 1 : smp);
-    for (i = 0; i < n; i++) {
-        uint32_t rp = w >= d ? w - d : w + DELAY_LEN - d;
-        int32_t r = (int32_t)buf[rp] * 8;
-        buf[w] = dly_pack(in[i] + mul16(r, fb));
-        if (++w == DELAY_LEN)
+    int pp = EF(nd, DELAY_P_PINGPONG) >= 32768;
+    int64_t smp, top = pp ? (int64_t)DELAY_HALF - 1 : (int64_t)DELAY_LEN - 1;
+    if (nd->conn & (1u << DELAY_I_CLK)) {   /* tempo: the time of the last 24 clock pulses, smoothed */
+        const sig_t *clk = nd->in[DELAY_I_CLK];
+        for (i = 0; i < n; i++) {
+            int hi = clk[i] >= 32768;
+            nd->s.dly.t++;
+            if (hi && !nd->s.dly.prev) {
+                uint32_t k = nd->s.dly.seen % DELAY_CLK_PPQN;
+                if (nd->s.dly.seen >= DELAY_CLK_PPQN) {
+                    uint32_t m = nd->s.dly.t - nd->s.dly.ring[k];
+                    if (m >= ENG_SR / 5u && m <= ENG_SR * 3u / 2u)
+                        nd->s.dly.beat = nd->s.dly.seen == DELAY_CLK_PPQN ? m : (uint32_t)((int32_t)nd->s.dly.beat + ((int32_t)m - (int32_t)nd->s.dly.beat) / 4);
+                }
+                nd->s.dly.ring[k] = nd->s.dly.t;
+                nd->s.dly.seen++;
+            }
+            nd->s.dly.prev = (uint8_t)hi;
+        }
+    }
+    if (EF(nd, DELAY_P_SYNC) >= 32768) {
+        uint32_t div = delay_div(EF(nd, DELAY_P_TIME));
+        smp = ((int64_t)DELAY_DIV_NUM[div] * nd->s.dly.beat * 2 + DELAY_DIV_DEN[div]) / ((int64_t)DELAY_DIV_DEN[div] * 2);
+    } else
+        smp = ((int64_t)EF(nd, DELAY_P_TIME) * ENG_SR + (int64_t)500 * 65536) / (1000 * 65536);   /* round(t_ms / 1000 * sr) */
+    d = (uint32_t)(smp < 1 ? 1 : smp > top ? top : smp);
+    if (!pp) {
+        for (i = 0; i < n; i++) {
+            uint32_t rp = w >= d ? w - d : w + DELAY_LEN - d;
+            int32_t r = (int32_t)buf[rp] * 8;
+            buf[w] = dly_pack(in[i] + mul16(r, fb));
+            if (++w == DELAY_LEN)
+                w = 0;
+            out[i] = mul16(in[i], dry) + mul16(r, mix);
+            outr[i] = out[i];
+        }
+    } else {
+        int16_t *bb = buf + DELAY_HALF;
+        if (w >= DELAY_HALF)
             w = 0;
-        out[i] = mul16(in[i], dry) + mul16(r, mix);
+        for (i = 0; i < n; i++) {
+            uint32_t rp = w >= d ? w - d : w + DELAY_HALF - d;
+            int32_t ea = (int32_t)buf[rp] * 8, eb = (int32_t)bb[rp] * 8, dr = mul16(in[i], dry);
+            bb[w] = dly_pack(mul16(ea, fb));
+            buf[w] = dly_pack(in[i] + mul16(eb, fb));
+            if (++w == DELAY_HALF)
+                w = 0;
+            out[i] = dr + mul16(ea, mix);
+            outr[i] = dr + mul16(eb, mix);
+        }
     }
     nd->s.dly.w = w;
 }

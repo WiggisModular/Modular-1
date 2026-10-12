@@ -8,6 +8,8 @@ export interface Voice {
   pitch: number;
   gate: number;
   velocity: number;
+  /** a clock tick (24 per quarter note) falls in this block */
+  clock: boolean;
 }
 
 export interface Ctx {
@@ -82,7 +84,7 @@ const fm1: ModuleImpl<null> = {
     type: 'fm1',
     label: 'Main',
     inputs: [],
-    outputs: [control('pitch'), gate('gate'), control('vel'), ...knobNames.map(control)],
+    outputs: [control('pitch'), gate('gate'), control('vel'), ...knobNames.map(control), gate('clock')],
     params: [...knobNames.map((n) => param(n, 0, 1, 0.5, { step: 0.01 }))],
   },
   init: () => null,
@@ -91,6 +93,10 @@ const fm1: ModuleImpl<null> = {
     c.out.gate.fill(c.voice.gate, 0, c.n);
     c.out.vel.fill(c.voice.velocity, 0, c.n);
     for (const n of knobNames) c.out[n].fill(c.p[n] ?? 0, 0, c.n);
+    // clock: 24 ppqn from the arpeggiator or MIDI in, a pulse of half a block per tick; nothing without a source
+    const hi = c.voice.clock ? Math.ceil(c.n / 2) : 0;
+    c.out.clock.fill(1, 0, hi);
+    c.out.clock.fill(0, hi, c.n);
   },
 };
 
@@ -133,28 +139,108 @@ const osc: ModuleImpl<{ phase: number }> = {
   },
 };
 
+/** Note lengths of the synced delay, shortest first (the time knob steps through them): name and length in quarter notes = num / den. */
+export const DELAY_DIVS: { name: string; num: number; den: number }[] = [
+  { name: '1/16T', num: 1, den: 6 },
+  { name: '1/16', num: 1, den: 4 },
+  { name: '1/8T', num: 1, den: 3 },
+  { name: '1/16.', num: 3, den: 8 },
+  { name: '1/8', num: 1, den: 2 },
+  { name: '1/8.', num: 3, den: 4 },
+  { name: '1/4', num: 1, den: 1 },
+  { name: '3/8', num: 3, den: 2 },
+  { name: '1/2', num: 2, den: 1 },
+  { name: '5/8', num: 5, den: 2 },
+  { name: '1/1', num: 4, den: 1 },
+];
+/** the clock input is the Main module's clock: 24 pulses per quarter note */
+export const DELAY_CLK_PPQN = 24;
+
+/** which note length the time knob selects when the delay is synced: its range split into DELAY_DIVS.length steps */
+export function delayDivIndex(time: number, tmin: number, tmax: number): number {
+  return Math.max(0, Math.min(DELAY_DIVS.length - 1, Math.round(((time - tmin) / (tmax - tmin)) * (DELAY_DIVS.length - 1))));
+}
+
 const LFO_WAVES = [...WAVES, 'S&H'];
 
-const lfo: ModuleImpl<{ phase: number; seed: number; held: number }> = {
+interface LfoState {
+  phase: number;
+  seed: number;
+  held: number;
+  clkHi: boolean;
+  rstHi: boolean;
+  /** clk edges counted since the last cycle start (synced) */
+  ticks: number;
+  /** samples since the last clk edge, and the smoothed distance between edges (0 = none seen yet) */
+  since: number;
+  interval: number;
+}
+
+/**
+ * LFO. `rate` in Hz, or, with `sync`, one cycle per note length `div` (as the delay). The clk input is a 24 ppqn clock (the
+ * Main module's clock output): the cycle snaps to every n-th edge (n = 24 x the note length in quarter notes) and runs at the
+ * measured clock speed in between. Without a clock (none for half a second) it runs at `bpm`. A rising edge at reset restarts
+ * the cycle. S&H draws a new value at every cycle start.
+ */
+const lfo: ModuleImpl<LfoState> = {
   def: {
     type: 'lfo',
     label: 'LFO',
-    inputs: [],
+    inputs: [gate('clk'), gate('reset')],
     outputs: [control('out')],
-    params: [param('wave', 0, 4, 0, { step: 1, choices: LFO_WAVES }), param('rate', 0.02, 40, 4, { unit: 'Hz', step: 0.01 }), param('depth', 0, 1, 1, { step: 0.01 })],
+    params: [
+      param('wave', 0, 4, 0, { step: 1, choices: LFO_WAVES }),
+      param('rate', 0.02, 40, 4, { unit: 'Hz', step: 0.01 }),
+      param('depth', 0, 1, 1, { step: 0.01 }),
+      param('sync', 0, 1, 0, { step: 1, choices: ['free', 'sync'], toggle: true }),
+      param('div', 0, DELAY_DIVS.length - 1, 6, { step: 1, choices: DELAY_DIVS.map((d) => d.name) }),
+      param('bpm', 40, 300, 120, { step: 1 }),
+    ],
   },
-  init: () => ({ phase: 0, seed: 0x2545f491, held: 0 }),
+  init: (sr) => ({ phase: 0, seed: 0x2545f491, held: 0, clkHi: false, rstHi: false, ticks: 0, since: sr, interval: 0 }),
   process(c, s) {
-    const dt = (c.p.rate ?? 1) / c.sr;
     const kind = Math.round(c.p.wave ?? 0);
     const depth = c.p.depth ?? 1;
+    const sync = (c.p.sync ?? 0) >= 0.5;
+    const { num, den } = DELAY_DIVS[Math.max(0, Math.min(DELAY_DIVS.length - 1, Math.round(c.p.div ?? 6)))];
+    const perCycle = (24 * num) / den; // clock ticks per cycle
+    const dtBpm = ((c.p.bpm ?? 120) * den) / (60 * num * c.sr);
+    const dtFree = (c.p.rate ?? 1) / c.sr;
+    const newCycle = (): void => {
+      // sample & hold: new random value (-1..1) at every cycle start
+      s.seed = (Math.imul(s.seed, 1664525) + 1013904223) >>> 0;
+      s.held = s.seed / 0x80000000 - 1;
+    };
     for (let i = 0; i < c.n; i++) {
+      const clk = c.inp.clk[i] >= 0.5;
+      const rst = c.inp.reset[i] >= 0.5;
+      if (s.since < c.sr) s.since++;
+      if (clk && !s.clkHi) {
+        if (s.since >= c.sr / 2) s.interval = 0;
+        else s.interval = s.interval > 0 ? s.interval + (s.since - s.interval) / 8 : s.since;
+        s.since = 0;
+        if (sync && ++s.ticks >= perCycle) {
+          s.ticks = 0;
+          s.phase = 0;
+          newCycle();
+        }
+      }
+      s.clkHi = clk;
+      if (rst && !s.rstHi) {
+        s.phase = 0;
+        s.ticks = 0;
+        newCycle();
+      }
+      s.rstHi = rst;
+      const live = sync && s.interval > 0 && s.since < c.sr / 2;
+      const dt = !sync ? dtFree : live ? 1 / (perCycle * s.interval) : dtBpm;
       s.phase += dt;
       if (s.phase >= 1) {
-        s.phase -= 1;
-        // sample & hold: new random value (-1..1) at every cycle start
-        s.seed = (Math.imul(s.seed, 1664525) + 1013904223) >>> 0;
-        s.held = s.seed / 0x80000000 - 1;
+        if (live) s.phase = 1 - 1e-6; // wait for the clock's next cycle start
+        else {
+          s.phase -= 1;
+          newCycle();
+        }
       }
       c.out.out[i] = (kind === 4 ? s.held : wave(kind, s.phase, dt)) * depth;
     }
@@ -336,23 +422,91 @@ const mixer: ModuleImpl<null> = {
   },
 };
 
-const delay: ModuleImpl<{ buf: Float32Array; w: number }> = {
+interface DelayState {
+  buf: Float32Array;
+  w: number;
+  /** clock tempo: sample counter, the last 24 pulse times, pulses seen, previous level, samples per quarter note */
+  t: number;
+  ring: Float64Array;
+  seen: number;
+  prev: boolean;
+  beat: number;
+}
+
+/**
+ * Delay. free: `time` in ms; sync: `time` picks a note length (DELAY_DIVS) at the tempo of the `clk` input (the Main module's
+ * clock; 120 bpm until 24 pulses have come in). The tempo is the time of the last 24 pulses, smoothed. Ping-pong splits the
+ * one buffer in two halves (A, B): the input enters A, A's echo goes to B, B's back to A, so the echoes alternate out
+ * (left) and r (right), each with feedback `fb`; the dry/wet `mix` applies to both. Each half is at most half the buffer, so
+ * the delay time is limited to about 525 ms then. Without ping-pong r is the same as out.
+ */
+const delay: ModuleImpl<DelayState> = {
   def: {
     type: 'delay',
     label: 'Delay',
-    inputs: [audio('in')],
-    outputs: [audio('out')],
-    params: [param('time', 1, 1000, 250, { unit: 'ms', step: 1 }), param('fb', 0, 0.95, 0.4, { step: 0.01 }), param('mix', 0, 1, 0.3, { step: 0.01 })],
+    inputs: [audio('in'), gate('clk')],
+    outputs: [audio('out'), audio('r')],
+    params: [
+      param('time', 1, 1000, 250, { unit: 'ms', step: 1, altText: { when: 'sync', text: (v) => DELAY_DIVS[delayDivIndex(v, 1, 1000)].name } }),
+      param('fb', 0, 0.95, 0.4, { step: 0.01 }),
+      param('mix', 0, 1, 0.3, { step: 0.01 }),
+      param('sync', 0, 1, 0, { step: 1, choices: ['free', 'sync'], toggle: true }),
+      param('pingpong', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
+    ],
   },
-  init: (sr) => ({ buf: new Float32Array(Math.ceil(sr * 1.05)), w: 0 }),
+  init: (sr) => ({ buf: new Float32Array(Math.ceil(sr * 1.05)), w: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2) }),
   process(c, s) {
     const len = s.buf.length;
-    const d = Math.max(1, Math.min(len - 1, Math.round(((c.p.time ?? 250) / 1000) * c.sr)));
+    const half = Math.floor(len / 2);
+    const pp = (c.p.pingpong ?? 0) >= 0.5;
+    if (c.connected.clk) {
+      for (let i = 0; i < c.n; i++) {
+        s.t++;
+        const hi = c.inp.clk[i] >= 0.5;
+        if (hi && !s.prev) {
+          const k = s.seen % DELAY_CLK_PPQN;
+          if (s.seen >= DELAY_CLK_PPQN) {
+            const m = s.t - s.ring[k];
+            if (m >= c.sr * 0.2 && m <= c.sr * 1.5) s.beat = s.seen === DELAY_CLK_PPQN ? m : s.beat + Math.trunc((m - s.beat) / 4);
+          }
+          s.ring[k] = s.t;
+          s.seen++;
+        }
+        s.prev = hi;
+      }
+    }
+    let samples: number;
+    if ((c.p.sync ?? 0) >= 0.5) {
+      const div = DELAY_DIVS[delayDivIndex(c.p.time ?? 250, 1, 1000)];
+      samples = Math.round((div.num * s.beat) / div.den);
+    } else samples = Math.round(((c.p.time ?? 250) / 1000) * c.sr);
+    const fb = c.p.fb ?? 0;
+    const mix = c.p.mix ?? 0;
+    const o = c.out.out;
+    const r = c.out.r;
+    if (!pp) {
+      const d = Math.max(1, Math.min(len - 1, samples));
+      for (let i = 0; i < c.n; i++) {
+        const e = s.buf[(s.w - d + len) % len];
+        s.buf[s.w] = c.inp.in[i] + e * fb;
+        s.w = (s.w + 1) % len;
+        o[i] = c.inp.in[i] * (1 - mix) + e * mix;
+        r[i] = o[i];
+      }
+      return;
+    }
+    const d = Math.max(1, Math.min(half - 1, samples));
+    if (s.w >= half) s.w = 0;
     for (let i = 0; i < c.n; i++) {
-      const r = s.buf[(s.w - d + len) % len];
-      s.buf[s.w] = c.inp.in[i] + r * (c.p.fb ?? 0);
-      s.w = (s.w + 1) % len;
-      c.out.out[i] = c.inp.in[i] * (1 - (c.p.mix ?? 0)) + r * (c.p.mix ?? 0);
+      const rp = (s.w - d + half) % half;
+      const ea = s.buf[rp];
+      const eb = s.buf[half + rp];
+      s.buf[half + s.w] = ea * fb;
+      s.buf[s.w] = c.inp.in[i] + eb * fb;
+      s.w = (s.w + 1) % half;
+      const dry = c.inp.in[i] * (1 - mix);
+      o[i] = dry + ea * mix;
+      r[i] = dry + eb * mix;
     }
   },
 };
@@ -416,7 +570,7 @@ const output: ModuleImpl<null> = {
   def: {
     type: 'output',
     label: 'Output',
-    inputs: [audio('l'), audio('r')],
+    inputs: [{ ...audio('l'), label: 'l (mono)' }, audio('r')],
     outputs: [],
     params: [param('level', 0, 1, 0.7, { step: 0.01 })],
   },

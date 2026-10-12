@@ -42,6 +42,8 @@ export async function attachMidi(host: Pick<AudioHost, 'send'>, status: (s: stri
       for (const input of access.inputs.values()) {
         input.onmidimessage = (ev) => {
           const [s, a, b] = ev.data ?? [];
+          if (s === 0xf8) return void host.send({ t: 'clock' });
+          if (s === 0xfa || s === 0xfb || s === 0xfc) return void host.send({ t: 'clockrun', on: s !== 0xfc });
           const cmd = s & 0xf0;
           if (cmd === 0x90 && b > 0) host.send({ t: 'on', note: a, vel: b / 127 });
           else if (cmd === 0x80 || (cmd === 0x90 && b === 0)) host.send({ t: 'off', note: a });

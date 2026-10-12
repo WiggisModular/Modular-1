@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Compact binary patch format, read by firmware/src/engine.c (eng_load).
 //
-//   u8  magic 0xA1, u8 version 6, u8 module count, u8 reserved (0), u16 LE cable count, u16 reserved (0)
+//   u8  magic 0xA1, u8 version 8, u8 module count, u8 reserved (0), u16 LE cable count, u16 reserved (0)
 //   per module:  u8 type index, then one i32 LE per parameter (Q16.16), in the order of the definition;
 //                modules with parameter inputs (paramInputs) then add i32 att1, i32 att2 (Q16.16, -1..1) and
 //                six u8 matrix masks for the sources p1, p2, k1, k2, k3, k4 (bit n = the n-th parameter)
@@ -15,7 +15,7 @@ import { MAX_MODULES, SOURCES, type Patch } from './patch';
 
 export const TYPE_ORDER: string[] = Object.keys(DEFS);
 export const MAX_CABLES = 192;
-export const VERSION = 6; // 6: the filter's outputs are lp24, lp12, bp, hp, mix; 5: the filter got the morph input (ports after cv moved), track and morph parameters; 4: the reverb module was added before the output
+export const VERSION = 8; // 8: the delay has the clk input and no div, bpm parameters (sync: the time knob picks the note length), the lfo got the clk and reset inputs (before p1, p2) and the sync, div, bpm parameters; 7: the delay got the r output and the sync, div, bpm and pingpong parameters; 6: the filter's outputs are lp24, lp12, bp, hp, mix; 5: the filter got the morph input (ports after cv moved), track and morph parameters; 4: the reverb module was added before the output
 /** bytes of a module record */
 export const recordSize = (type: string): number => 1 + 4 * DEFS[type].params.length + (DEFS[type].paramInputs ? 14 : 0);
 export const Q = 65536;
