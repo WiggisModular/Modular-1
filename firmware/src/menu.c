@@ -97,11 +97,11 @@ static void mix_toggle(uint32_t v)
 /* ---- settings menu */
 
 enum { MR_LEDS, MR_CPU, MR_ACCEL, MR_OCT, MR_CH1, MR_CH2, MR_CH3, MR_CH4, MR_CLOCK, MR_PROG, MR_VERSION, MR_PEAK, MR_UPDATE, MR_DEFAULTS, MR_COUNT };
-enum { MT_DISPLAY, MT_CONTROL, MT_MIDI, MT_SYSTEM, MT_COUNT };
+enum { MT_DISPLAY, MT_CONTROL, MT_MIDI, MT_SYSTEM, MT_MANUAL, MT_COUNT };   /* (MANUAL has no rows: a text) */
 static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "CPU IN BAR", "KNOB ACCEL", "OCTAVE", "V1 CHANNEL", "V2 CHANNEL", "V3 CHANNEL", "V4 CHANNEL", "CLOCK IN", "PROG CHANGE",
                                               "VERSION", "CPU PEAK", "UPDATE MODE", "DEFAULTS"};
 static const uint8_t ROW_TAB[MR_COUNT] = {MT_DISPLAY, MT_DISPLAY, MT_CONTROL, MT_CONTROL, MT_MIDI, MT_MIDI, MT_MIDI, MT_MIDI, MT_MIDI, MT_MIDI, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM};
-static const char *const TAB_NAME[MT_COUNT] = {"DISPLAY", "CONTROL", "MIDI", "SYSTEM"};
+static const char *const TAB_NAME[MT_COUNT] = {"DISPLAY", "CONTROL", "MIDI", "SYSTEM", "MANUAL"};
 
 static uint8_t menu_tab, menu_sel = MR_LEDS;     /* the tab and the selected row (a row number) */
 static uint32_t cpu_peak;                       /* the highest CPU % since boot */
@@ -110,9 +110,9 @@ static uint32_t update_arm;                     /* UPDATE MODE / DEFAULTS: fm1_m
 static uint32_t menu_first(uint32_t tab)
 {
     uint32_t r = 0;
-    while (ROW_TAB[r] != tab)
+    while (r < MR_COUNT && ROW_TAB[r] != tab)
         r++;
-    return r;
+    return r < MR_COUNT ? r : 0u;                 /* (the manual has no rows) */
 }
 
 static uint32_t menu_count(uint32_t tab)
@@ -179,19 +179,82 @@ static void menu_row_draw(uint32_t row, uint32_t y, int hot)
     text_mid(228u - w, y + 5u, val, hot ? C_ACC : C_FG, bg);
 }
 
+/* the MANUAL tab (manual.c): MAN_VIS lines from man_top, SELECT scrolls */
+#include "manual.c"
+#define MAN_Y 62u
+#define MAN_VIS 16u
+#define MAN_PITCH 10u
+static uint32_t man_top;
+
+static void manual_draw(void)
+{
+    uint32_t i, h = MAN_VIS * MAN_PITCH, thumb, ty;
+    for (i = 0; i < MAN_VIS; i++) {
+        uint32_t k = man_top + i, y = MAN_Y + i * MAN_PITCH, c = 0, nm = 0;
+        char line[MAN_COLS + 2u], *p = line;
+        uint16_t col = C_FG;
+        const char *s = k < MAN_N ? MANUAL[k] : "";
+        if (s[0] == '#')
+            col = C_ACC;
+        else if (s[0] == '~')
+            col = C_DIM;
+        else if (s[0] == ' ' && s[1] != ' ')         /* "NAME: text": the name (up to a colon in the first 18) in the accent colour */
+            while (s[1u + c] && c < 18u && s[1u + c] != ':')
+                c++;
+        if (s[0] == ' ' && s[1] != ' ' && s[1u + c] == ':')
+            nm = c + 1u;
+        if (nm) {                                   /* the name with its colon, then the rest */
+            uint32_t j;
+            for (j = 0; j < nm; j++)
+                line[j] = s[1u + j];
+            line[nm] = 0;
+            text5x7(12, y, line, 1, C_ACC, C_BG);
+            p = put(line, s + 1u + nm);
+            pad(p, line, MAN_COLS - nm);
+            text5x7(12u + 6u * nm, y, line, 1, col, C_BG);
+            continue;
+        }
+        if (s[0])
+            p = put(p, s + 1);
+        pad(p, line, MAN_COLS);
+        text5x7(12, y, line, 1, col, C_BG);
+    }
+    thumb = h * MAN_VIS / MAN_N;                    /* the scroll bar at the right */
+    thumb = thumb < 8u ? 8u : thumb;
+    ty = MAN_N > MAN_VIS ? (h - thumb) * man_top / (MAN_N - MAN_VIS) : 0u;
+    lcd_fill(232, MAN_Y, 4, h, 0x2104u);
+    lcd_fill(232, MAN_Y + ty, 4, thumb, C_ACC);
+}
+
+static void manual_scroll(int32_t s)
+{
+    int32_t t = (int32_t)man_top + s, max = (int32_t)MAN_N - (int32_t)MAN_VIS;
+    t = t > max ? max : t < 0 ? 0 : t;
+    if ((uint32_t)t != man_top) {
+        man_top = (uint32_t)t;
+        ui_dirty = 1;
+    }
+}
+
 static void menu_draw(int full)
 {
+    static uint8_t shown = 255;
     uint32_t t, r, n = menu_count(menu_tab), y = 72u, first = menu_first(menu_tab);
-    if (full) {
+    if (full || shown != menu_tab) {                /* (a new tab: the page is cleared, the hint changes) */
         lcd_fill(0, 24, 240, 216, C_BG);
-        text5x7(12, 230, "ALGO: TAB  PRESET: ROW  K1-4: VALUE", 1, 0x4208u, C_BG);
+        text5x7(12, 230, menu_tab == MT_MANUAL ? "SELECT: SCROLL      ALGO: TAB" : "ALGO: TAB  PRESET: ROW  K1-4: VALUE", 1, 0x4208u, C_BG);
+        shown = menu_tab;
     }
-    for (t = 0; t < MT_COUNT; t++)       /* the tabs: four bars, the open one in the accent colour */
-        lcd_fill(12u + t * 55u, 30, 51, 4, t == menu_tab ? C_ACC : 0x2104u);
+    for (t = 0; t < MT_COUNT; t++)       /* the tabs: bars, the open one in the accent colour */
+        lcd_fill(12u + t * 44u, 30, 40, 4, t == menu_tab ? C_ACC : 0x2104u);
     {
         char line[20], *p = put(line, TAB_NAME[menu_tab]);
         pad(p, line, 12);
         text_mid(12, 42, line, C_ACC, C_BG);
+    }
+    if (menu_tab == MT_MANUAL) {
+        manual_draw();
+        return;
     }
     for (r = 0; r < n; r++)
         menu_row_draw(first + r, y + r * 24u, first + r == menu_sel);
@@ -210,6 +273,8 @@ static void menu_set_row(uint32_t row, int32_t s)       /* s > 0: the next value
 {
     int up = s > 0;
     int32_t d = s > 0 ? 1 : -1;
+    if (menu_tab == MT_MANUAL)
+        return;                                     /* (no row: the buttons do nothing on the manual) */
     switch (row) {
     case MR_LEDS: {
         int32_t v = (int32_t)cfg.leds + d;
@@ -256,6 +321,8 @@ static void menu_set_row(uint32_t row, int32_t s)       /* s > 0: the next value
 static void menu_move(int32_t s)                        /* PRESET / SELECT: the next / previous row of the tab */
 {
     uint32_t first = menu_first(menu_tab), n = menu_count(menu_tab), k = menu_sel - first;
+    if (!n)
+        return;
     k = (k + (s > 0 ? 1u : n - 1u)) % n;
     menu_sel = (uint8_t)(first + k);
     update_arm = 0;
@@ -277,6 +344,10 @@ static void menu_knobs(const int32_t *st)
     uint32_t k;
     if (st[1])
         menu_tab_go(st[1]);
+    if (menu_tab == MT_MANUAL) {                    /* the manual: SELECT (and PRESET) scroll */
+        manual_scroll(st[0] + st[6]);
+        return;
+    }
     if (st[6])
         menu_move(st[6]);
     else if (st[0])

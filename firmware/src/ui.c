@@ -558,8 +558,12 @@ static void view_draw(int full)                 /* whichever page is showing */
         module_draw(full);
 }
 
+static uint8_t booting = 1;                     /* the loading screen is up (main.c boot_step): the pages stay unseen */
+
 static void screen_idle(void)                   /* redraws in place: every text pads its field, no blanking of the screen */
 {
+    if (booting)
+        return;
     header_draw();
     view_draw(1);
 }

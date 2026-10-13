@@ -282,10 +282,58 @@ static int m1_slot_info(uint32_t slot, char *name, uint32_t *len)
     return 1;
 }
 
+/* The loading screen: the name, then what is being loaded and a bar, from the first LCD write until the patches are up */
+static void splash_draw(void)
+{
+    lcd_fill(0, 0, 240, 240, C_BG);
+    lcd_fill(12, 60, 216, 3, C_ACC);
+    text5x7(12, 72, "MODULAR-1", 4, C_FG, C_BG);
+    lcd_fill(12, 108, 216, 3, C_ACC);
+    text5x7(12, 122, "PATCHABLE SYNTH FOR FM-1", 1, C_DIM, C_BG);
+    text5x7(12, 136, FELUCCA_VERSION, 1, C_ACC, C_BG);
+}
+
+#define SPLASH_MS 5000u                         /* the loading screen stays up at least this long */
+static const char BOOT_READY[] = "READY";
+static uint32_t t_splash;                       /* fm1_ms when it came up */
+static const char *boot_what;                   /* what boot_step last printed */
+
+/* what is being loaded now; the bar is the time left of SPLASH_MS (the steps are quicker than that) */
+static void boot_step(const char *what)
+{
+    static uint32_t drawn = ~0u;
+    char line[32], *p;
+    uint32_t el = fm1_ms - t_splash, w = el >= SPLASH_MS ? 216u : el * 216u / SPLASH_MS;
+    if (!booting)
+        return;
+    if (what != boot_what) {
+        boot_what = what;
+        p = put(line, what == BOOT_READY ? "" : "LOADING ");
+        p = put(p, what);
+        pad(p, line, 26);
+        text5x7(12, 176, line, 1, C_FG, C_BG);
+    }
+    if (w != drawn) {
+        drawn = w;
+        lcd_fill(12, 196, w, 6, C_ACC);
+        lcd_fill(12 + w, 196, 216u - w, 6, 0x2104u);
+    }
+}
+
+static const char *boot_msg;                    /* shown in the bar once the pages are up */
+static uint32_t boot_msg_ms;
+
+static const char *const VOICE_LINE[ENG_VOICES] = {"VOICE 1", "VOICE 2", "VOICE 3", "VOICE 4"};
+static void voice_step(uint32_t v)              /* the loading screen's line for voice v (0..3) */
+{
+    boot_step(VOICE_LINE[v]);
+}
+
 static void voices_boot(uint32_t from)           /* voices from..4 run the factory presets (voice n the n-th) */
 {
     uint32_t v;
     for (v = from; v < ENG_VOICES; v++) {
+        voice_step(v);
         eng_voice_select(v);
         preset_load(v < list_count() ? v : 0u);
     }
@@ -297,6 +345,7 @@ static void voices_boot(uint32_t from)           /* voices from..4 run the facto
 static int voice_restore(uint32_t v, const uint8_t *p, uint32_t len, uint32_t module, uint32_t preset)
 {
     int rc;
+    voice_step(v);
     eng_voice_select(v);
     rc = m1_apply(p, len);
     if (rc == 0) {
@@ -390,11 +439,13 @@ static void patch_boot(void)                    /* the stored state if there is 
             leds_avail();
             leds_octave();
             screen_idle();
-            ui_msg(buf[0] == BLOB_MAGIC ? "STATE RESTORED" : "PATCH RESTORED", 2000);
+            boot_msg = buf[0] == BLOB_MAGIC ? "STATE RESTORED" : "PATCH RESTORED";
+            boot_msg_ms = 2000;
             return;
         }
         voices_boot(0u);
-        ui_msg("RESTORE FAILED", 3000);             /* a record was there but did not load: the factory presets run */
+        boot_msg = "RESTORE FAILED";                /* a record was there but did not load: the factory presets run */
+        boot_msg_ms = 3000;
         return;
     }
     voices_boot(0u);
@@ -837,12 +888,6 @@ static void buttons_poll(void)
         arp_toggle();
 }
 
-#ifdef M1_SPLASH                                        /* build with -DM1_SPLASH to bring the splash screen back */
-#define SPLASH_MS 10000u
-#else
-#define SPLASH_MS 0u                                    /* switched off for now */
-#endif
-
 static void uboot_now(void)                             /* the update loader (also MENU > UPDATE MODE) */
 {
     fm1_audio_stop();
@@ -854,16 +899,6 @@ static void uboot_now(void)                             /* the update loader (al
     fm1_enter_uboot();
 }
 
-static void splash_draw(void)
-{
-    lcd_fill(0, 0, 240, 240, C_BG);
-    lcd_fill(12, 84, 216, 3, C_ACC);
-    text5x7(12, 96, "MODULAR-1", 4, C_FG, C_BG);
-    lcd_fill(12, 132, 216, 3, C_ACC);
-    text5x7(12, 146, "PATCHABLE SYNTH FOR FM-1", 1, C_DIM, C_BG);
-    text5x7(12, 160, FELUCCA_VERSION, 1, C_ACC, C_BG);
-}
-
 static void fm1_main(void)
 {
     uint32_t t_btn = 0;
@@ -871,24 +906,35 @@ static void fm1_main(void)
     if (flash_ok)
         ota_boot_cleanup();                             /* staging area left by an update */
     lcd_init();
-    if (SPLASH_MS)
-        splash_draw();
+    splash_draw();                                      /* the loading screen: until the patches are up, and at least SPLASH_MS */
+    t_splash = fm1_ms;
+    boot_step("INPUT");
     fm1_input_init();
     fm1_adc_init();
     master_boot();
+    boot_step("AUDIO");
     audio_init();
+    boot_step("USB");
     usb_start();
+    boot_step("MIDI");
     uart_midi_init();                                   /* before TIMER5: PORTH read-modify-write */
     fm1_timer5_start(isr_timer5, 4);
     fm1_guard_lock_top();
     fm1_irq_enable_all();
     fm1_delay_ms(30);
+    boot_step("STATE");
     patch_boot();
-    while (fm1_ms < SPLASH_MS) {                        /* keep the splash up, USB stays served */
+    while (fm1_ms - t_splash < SPLASH_MS) {             /* the screen stays up (USB is served); the bar fills with the time left */
         fm1_wdt_feed();
         usb_retry(fm1_ms);
+        boot_step(BOOT_READY);
     }
+    boot_step(BOOT_READY);
+    booting = 0;
     lcd_fill(0, 0, 240, 240, C_BG);
+    screen_idle();                                      /* the top bar and the page */
+    if (boot_msg)
+        ui_msg(boot_msg, boot_msg_ms);
     ui_dirty = 2;
     leds_arp();
     leds_avail();
