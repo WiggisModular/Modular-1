@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.2 (firmware `M1-1.0.2`, app 1.0.2)
+
+### Fixed
+- The PRESET knob scrolls the MANUAL page and moves between rows in the settings menu; before, it loaded the next patch even with the menu open (edits on that voice were lost).
+- Holding OCT- and OCT+ right as the loading screen ends no longer drops the FM-1 into the update loader at once: the 5 s hold now counts from the end of the splash.
+- During the 5 s loading screen the FM-1 answers the editor, the flasher and the UBOOT request, and plays incoming MIDI notes, instead of ignoring them until the screen is gone.
+- Fewer redundant redraws at the end of boot.
+- Host preview tool: the menu tab and manual line arguments are clamped.
+
+### Not verified
+- Not yet seen on the display.
+
 ## 1.0.1 (firmware `M1-1.0.1`, app 1.0.1)
 
 ### Added
