@@ -454,7 +454,7 @@ const delay: ModuleImpl<DelayState> = {
       param('pingpong', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
     ],
   },
-  init: (sr) => ({ buf: new Float32Array(Math.ceil(sr * 1.05)), w: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2) }),
+  init: (sr) => ({ buf: new Float32Array(Math.round((sr * 23000) / 44100)), w: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2) }),
   process(c, s) {
     const len = s.buf.length;
     const half = Math.floor(len / 2);
