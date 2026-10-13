@@ -98,7 +98,7 @@ export class DeviceLink {
     for (let i = 0; i < frames.length; i++) await this.ackFor(frames[i], CMD.chunk, i & 0x7f);
   }
 
-  /** Put a patch into preset slot 0..31 of the FM-1's bank (flash); it is not loaded. */
+  /** Put a patch into patch slot 0..31 of the FM-1's bank (flash); it is not loaded. */
   uploadSlot(slot: number, name: string, patch: Patch): Promise<void> {
     return this.serial(async () => {
       const bin = encodePatch(patch);

@@ -108,7 +108,7 @@ host.setPatch(editor.patch);
 
 // toolbar
 const presetSel = $<HTMLSelectElement>('preset');
-presetSel.append(new Option('Load preset…', ''), ...Object.keys(PRESETS).map((n) => new Option(n, n)), new Option('Empty patch', '__empty'));
+presetSel.append(new Option('Load patch…', ''), ...Object.keys(PRESETS).map((n) => new Option(n, n)), new Option('Empty patch', '__empty'));
 presetSel.onchange = () => {
   const v = presetSel.value;
   if (v) editor.setPatch(v === '__empty' ? emptyPatch() : PRESETS[v]());

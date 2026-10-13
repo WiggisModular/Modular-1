@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The Presets page: choose up to 32 presets and put them into the FM-1's preset bank (flash). The PRESET knob of the
-// FM-1 steps through the bank; with an empty bank it steps through the factory presets built into the firmware.
+// The Patches page: choose up to 32 patches and put them into the FM-1's patch bank (flash). The PRESET knob of the
+// FM-1 steps through the bank; with an empty bank it steps through the factory patches built into the firmware.
 import type { DeviceLink } from './device';
 import { DEFS } from './modules';
 import { validatePatch, type Patch } from './patch';
@@ -9,7 +9,7 @@ import { SLOTS } from './protocol';
 
 interface Entry {
   name: string;
-  /** a patch of the editor, kept as a copy; factory presets are rebuilt from PRESETS */
+  /** a patch of the editor, kept as a copy; factory patches are rebuilt from PRESETS */
   patch?: Patch;
 }
 
@@ -133,7 +133,7 @@ export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch
           await device.eraseSlot(i);
         }
       bar.value = 100;
-      status.textContent = `${total} presets are on the FM-1. Turn its PRESET knob to step through them.`;
+      status.textContent = `${total} patches are on the FM-1. Turn its PRESET knob to step through them.`;
     });
 
   read.onclick = () =>
@@ -141,7 +141,7 @@ export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch
       status.textContent = 'Reading the bank on the FM-1…';
       const slots = await device.readBank();
       const used = slots.filter((s) => s.used);
-      onDevice.textContent = used.length ? used.map((s) => `${String(s.slot + 1).padStart(2, '0')}  ${s.name}  (${s.length} bytes)`).join('\n') : 'The bank is empty: the PRESET knob steps through the factory presets built into the firmware.';
+      onDevice.textContent = used.length ? used.map((s) => `${String(s.slot + 1).padStart(2, '0')}  ${s.name}  (${s.length} bytes)`).join('\n') : 'The bank is empty: the PRESET knob steps through the factory patches built into the firmware.';
       status.textContent = `${used.length} of ${SLOTS} slots are used on the FM-1.`;
     });
 
@@ -149,7 +149,7 @@ export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch
     void run('clear', async () => {
       const slots = await device.readBank();
       for (const s of slots) if (s.used) await device.eraseSlot(s.slot);
-      onDevice.textContent = 'The bank is empty: the PRESET knob steps through the factory presets built into the firmware.';
+      onDevice.textContent = 'The bank is empty: the PRESET knob steps through the factory patches built into the firmware.';
       status.textContent = 'The FM-1 bank is empty.';
     });
 
@@ -162,15 +162,15 @@ export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch
       changed();
     },
   });
-  const reset = el('button', { textContent: 'All 32 factory presets', title: 'Replace the list with the factory presets', onclick: () => { list = Object.keys(PRESETS).slice(0, SLOTS).map((name) => ({ name })); changed(); } });
+  const reset = el('button', { textContent: 'All 32 factory patches', title: 'Replace the list with the factory patches', onclick: () => { list = Object.keys(PRESETS).slice(0, SLOTS).map((name) => ({ name })); changed(); } });
   const empty = el('button', { textContent: 'Empty the list', onclick: () => { list = []; changed(); } });
 
   root.append(
-    el('div', { class: 'card' }, el('h2', { textContent: 'Preset bank' }), el('p', { textContent: 'Choose up to 32 presets and send them to the FM-1. They are written to its flash: the PRESET knob steps through them, a program change selects one, and they stay when the power is off. Uploading replaces the whole bank.' }), el('div', { class: 'toolbar' }, connect, upload, read, clear), bar, status),
+    el('div', { class: 'card' }, el('h2', { textContent: 'Patch bank' }), el('p', { textContent: 'Choose up to 32 patches and send them to the FM-1. They are written to its flash: the PRESET knob steps through them, a program change selects one, and they stay when the power is off. Uploading replaces the whole bank.' }), el('div', { class: 'toolbar' }, connect, upload, read, clear), bar, status),
     el(
       'div',
       { class: 'bank-cols' },
-      el('div', { class: 'card' }, el('h2', { textContent: 'Factory presets' }), el('div', { class: 'toolbar' }, addCurrent), libEl),
+      el('div', { class: 'card' }, el('h2', { textContent: 'Factory patches' }), el('div', { class: 'toolbar' }, addCurrent), libEl),
       el('div', { class: 'card' }, el('h2', { textContent: 'Bank to upload ' }, countEl), el('div', { class: 'toolbar' }, reset, empty), bankEl),
     ),
     el('div', { class: 'card' }, el('h2', { textContent: 'On the FM-1' }), onDevice),
