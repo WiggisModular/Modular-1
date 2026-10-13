@@ -1,7 +1,7 @@
 {
   "name": "modular-1-web",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "license": "GPL-3.0-only",
   "scripts": {

@@ -121,3 +121,35 @@ SysEx over USB MIDI. The device *pulls* blocks: it sends read requests (cmd 0x30
 ## Main clock output (host-tested, golden pass; not flashed)
 
 - Module `fm1` (Main) has a gate output `clock` after `k4` (appended, patch format unchanged). Source: the arpeggiator's 24 ppqn tick while `arp_play`, else MIDI clock (0xF8 from USB or TRS; 0xFC mutes until 0xFA/0xFB), else no output. `eng_clock_tick()` counts ticks; `m_fm1` / `Engine.voice.clock` turn a block that saw a tick into a pulse over its first half (block-quantized, ticks within one block merge). Browser: Web MIDI 0xF8/0xFA/0xFB/0xFC via `input.ts` -> worklet `clock` / `clockrun`.
+
+## Two voices (host-tested, golden + arp tests pass; not flashed, CPU not measured)
+
+- Bi-timbral: the engine has `ENG_VOICES` = 2 independent patches (`eng_t EV[]`, `E` = the selected one via `eng_voice_select`; `eng_render` mixes both and restores the pointer, the clock `clk_ticks` is shared). Per voice pool: 80 buffers, 1 delay, 1 reverb (was 160/2/2 for the one patch; same total pool, 323660 B; a patch with two delays or reverbs no longer loads, no preset uses them).
+- SEL (button 3) switches the voice that keys, MIDI, knobs, LCD (bar shows `1 NAME` / `2 NAME`), program change and editor uploads act on; the SEL LED is lit on voice 2; notes held on the old voice end. Per-voice panel state is in `vs[]` (ui.c, macros `sel`, `cur_preset`, `patch_label`, `load_err`), the patch copy in `m1_curv[]` (proto.c). One arpeggiator per voice (`AV[2]`, `arp_p` = the selected voice's; PLAY and the arp pages act on it; the clock output follows voice 1's arp, else voice 2's, else MIDI); voice 2's scale is always voice 1's (the scale knob is refused there).
+- Storage: see "Saved state" below. Editor STORE is refused while voice 2 is selected.
+- LCD accent (`C_ACC`): orange on voice 1, purple (0xA19F) on voice 2; preset names are per voice (`label_buf[]`); the module colours in the patch picture are unchanged.
+- Both voices rendering doubles the audio ISR time: measure on the device (`eng_us_max`).
+
+## Mixer page + settings menu (host-previewed / built, not flashed)
+
+- `firmware/src/menu.c` (included after `arp_ui.c`): GLO opens the mixer (`PAGE_MIXER` 4): K1 / K2 the level of voice 1 / 2 (percent, square law, `eng_voice_gain`), the F#3 (OP1) and G#3 (OP2) keys mute voice 1 / 2 and play no notes (`keys_poll`, `MIX_KEYS`). HOME held 0.7 s opens the settings menu (`PAGE_MENU` 5, Felucca style: ALGO steps the tabs DISPLAY / CONTROL / MIDI / SYSTEM, PRESET or SELECT the rows, K1..K4 or OCT-/OCT+ the value; HOME tap or hold closes). HOME now acts on release (tap = go to Main).
+- Rows: LEDS, CPU IN BAR, KNOB ACCEL, OCTAVE, MIDI TO (selected / voice 1 / voice 2, notes only; program change stays on the selected voice), CLOCK IN, PROG CHANGE, VERSION, CPU PEAK, UPDATE MODE (OCT+ twice within 3 s -> UBOOT). Settings are `cfg` (ui.c); they and the mixer levels / mutes are saved by SAVE in the upper bits of `ps_state[0]` (`state_pack` / `state_unpack` in main.c; bit 15 marks a record that has them).
+- The top bar shows the name at the left and the CPU load at the right (`cpu_pct`: peak ISR time of the last 0.5 s in % of the 2.9 ms half buffer, `cpu_poll`).
+
+## Saved state + defaults (built, not flashed)
+
+- SAVE (and the editor's STORE) writes the whole panel state as one blob into the patch store (`blob_build` in main.c; sectors 0x97000 / 0x98000, `PS_MAX` 3840 B): both voices' patches as they run (parameter edits included), both arpeggiators' settings (`arp_pack`, transport not saved), plus in the header words the octave, menu settings and mixer levels / mutes (`state_pack`), each voice's selected module and preset. Boot: `boot_blob`; a record from before (a bare patch, first byte 0xA1) still loads as voice 1. Too big for the sector: `ERROR`. RAM .bss is now 60 KB of 72.
+- MENU > SYSTEM > DEFAULTS (OCT+ twice within 3 s): settings, mixer, arps, octave back to the defaults, voice 1 = preset 0, voice 2 = preset 1, and the stored state is erased (`defaults_now`, `ps_erase`).
+
+## MIDI channels per voice, LED modes, mute LEDs (built, not flashed)
+
+- `cfg.ch[2]`: voice 1 / 2 listen to their own MIDI channel (menu rows V1 / V2 CHANNEL, 0 = omni, defaults 1 and 2; both on the same channel = both play). Notes, CC 123 and program change go to the voices whose channel matches (`midi_drain`); program change loads into that voice. The panel keys still play the selected voice. MENU > MIDI TO is gone.
+- `cfg.leds`: OFF / DIM LOW / DIM HIGH (`fm1_led_dim_level`, default dim high). Channels and LED mode are saved in a 3 byte tail of the state blob (after the two patches); the old bits 8 and 13..14 of `ps_state[0]` are no longer used.
+- The F#3 / G#3 key LEDs are lit while voice 1 / 2 is muted (`mix_apply`), on every page.
+
+## Four voices, LED levels (built, host tests + golden pass; not flashed, CPU not measured)
+
+- `ENG_VOICES` = 4 (engine.h): four independent patches, SEL cycles 1 -> 2 -> 3 -> 4, colours orange / purple / cyan / green (`VOICE_COLOR`, `C_ACC`), one arpeggiator each (`AV[4]`, scale of voices 2..4 = voice 1's), per voice MIDI channel (defaults 1..4), mixer rows K1..K4, mute keys F#3 G#3 A#3 C#4 = OP1..OP4 (`MIX_KEY_BIT`; OP3/OP4 positions are a guess), mute LEDs on those keys. The clock output follows the lowest voice whose arp runs.
+- Memory: to fit four engines, per voice 24 modules, 128 cables, 40 signal buffers, one delay of `DELAY_LEN` 23000 samples (521 ms, the TS reference engine uses the same length now; the old 1.05 s did not fit), one reverb; `M1_PATCH_MAX` 2048. RAM region of app.ld is 24 KB, pool 408 KB (everything big is `ENG_POOL`: `EV`, `m1_curv`, the staging buffers). Pool headroom is 10 KB (build.py wants >= 8 KB). Preset 27 Drone's delay was 700 ms, now 500. The editor's HELLO reply reports 24 modules / 128 cables / 1 delay.
+- Saved state blob version 2 (4 patches, 4 arps, tail with channels, LED mode, mixer levels and mutes); version 1 and bare-patch records are still read. Word 1 of the record holds one selected-module byte per voice, word 2 one preset byte per voice. Boot shows STATE RESTORED (or RESTORE FAILED when a record was there but did not load).
+- LEDs: OFF / DIM LOW (the old glow, `FM1_LED_DIM_NS` 3.2 us) / DIM HIGH (`FM1_LED_DIM_HI_NS` 8 us, the tick waits the rest of the pulse); `fm1_led_dim_level(0|1|2)`.
