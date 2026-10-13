@@ -12,13 +12,13 @@
 #define ENG_POOL
 #endif
 
-#define ENG_MAX_MODULES 32
-#define ENG_MAX_CABLES 192
-#define ENG_NBUF 160u               /* signal buffers of ENG_BLOCK samples (a connected output, a summed input) */
-#define ENG_NDELAY 2                /* delay modules per patch */
-#define ENG_NREV 2                  /* reverb modules per patch */
+#define ENG_MAX_MODULES 24          /* per voice */
+#define ENG_MAX_CABLES 128
+#define ENG_NBUF 40u                /* signal buffers of ENG_BLOCK samples per voice (a connected output, a summed input) */
+#define ENG_NDELAY 1                /* delay modules per patch */
+#define ENG_NREV 1                  /* reverb modules per patch */
 #define RV_LEN 5934u                /* the four combs (1116 1188 1277 1356) and two allpasses (556 441), int16 Q13 */
-#define DELAY_LEN 46305u            /* ceil(ENG_SR * 1.05) samples, as the reference */
+#define DELAY_LEN 23000u            /* 521 ms (the reference has 1.05 s: four voices do not fit in the pool with it); web/src/modules.ts caps the delay the same */
 #define MAX_SUM (ENG_MAX_MODULES * 4)
 #define MAX_HELD 16
 
@@ -200,7 +200,7 @@ typedef struct {
     uint16_t first, n;       /* sources in sum_src[] */
 } sum_t;
 
-static struct {
+typedef struct {
     uint8_t loaded, nmod, nsum, nsrc, norder, nout;
     uint8_t order[ENG_MAX_MODULES], outputs[ENG_MAX_MODULES];
     uint8_t from_m[ENG_MAX_CABLES], from_p[ENG_MAX_CABLES], to_m[ENG_MAX_CABLES], to_p[ENG_MAX_CABLES];
@@ -211,13 +211,20 @@ static struct {
     struct { uint8_t note; int32_t vel; } held[MAX_HELD];
     uint8_t nheld;
     struct { int32_t pitch, gate, vel; } voice;
-    volatile uint32_t clk_ticks;     /* clock ticks (24 ppqn) counted by eng_clock_tick, from the arpeggiator or MIDI in */
     uint32_t clk_seen;
-} E;
+} eng_t;
 
-static sig_t buf_pool[ENG_NBUF][ENG_BLOCK] ENG_POOL;
-static int16_t dly_pool[ENG_NDELAY][DELAY_LEN] ENG_POOL;
-static int16_t rev_pool[ENG_NREV][RV_LEN] ENG_POOL;
+/* the voices. E is the one the API calls act on (eng_voice_select; the panel code), the audio ISR walks all of them and puts the
+ * pointer back. The clock is shared: ticks (24 ppqn) come from the arpeggiator or MIDI in (eng_clock_tick). */
+static eng_t EV[ENG_VOICES] ENG_POOL;
+static eng_t *eng_p = EV;
+#define E (*eng_p)
+static volatile uint32_t clk_ticks;
+
+static sig_t buf_pool[ENG_VOICES][ENG_NBUF][ENG_BLOCK] ENG_POOL;
+static int16_t dly_pool[ENG_VOICES][ENG_NDELAY][DELAY_LEN] ENG_POOL;
+static int16_t rev_pool[ENG_VOICES][ENG_NREV][RV_LEN] ENG_POOL;
+#define VOICE_NO ((uint32_t)(eng_p - EV))
 static const sig_t zero_buf[ENG_BLOCK];
 static sig_t dummy_out[ENG_BLOCK];
 
@@ -243,7 +250,7 @@ static sig_t *buf_alloc(void)
     uint32_t i;
     if (E.nbuf >= ENG_NBUF)
         return 0;
-    b = buf_pool[E.nbuf++];
+    b = buf_pool[VOICE_NO][E.nbuf++];
     for (i = 0; i < ENG_BLOCK; i++)
         b[i] = 0;
     return b;
@@ -279,7 +286,7 @@ int eng_load(const uint8_t *p, uint32_t len)
     E.loaded = 0;
     E.nheld = 0;
     E.voice.pitch = E.voice.gate = E.voice.vel = 0;
-    E.clk_seen = E.clk_ticks;
+    E.clk_seen = clk_ticks;
     if (len < 8u || p[0] != 0xA1 || p[1] != ENG_PATCH_VERSION)
         return -1;
     E.nmod = p[2];
@@ -315,14 +322,14 @@ int eng_load(const uint8_t *p, uint32_t len)
         if (nd->type == T_REVERB) {
             if (E.nrev >= ENG_NREV)
                 return -4;
-            nd->s.rev.buf = rev_pool[E.nrev++];
+            nd->s.rev.buf = rev_pool[VOICE_NO][E.nrev++];
             for (j = 0; j < RV_LEN; j++)
                 nd->s.rev.buf[j] = 0;
         }
         if (nd->type == T_DELAY) {
             if (E.ndly >= ENG_NDELAY)
                 return -4;
-            nd->s.dly.buf = dly_pool[E.ndly++];
+            nd->s.dly.buf = dly_pool[VOICE_NO][E.ndly++];
             nd->s.dly.t = nd->s.dly.seen = nd->s.dly.prev = 0;
             nd->s.dly.beat = ENG_SR / 2u;             /* 120 bpm until a clock has come in */
             for (j = 0; j < DELAY_LEN; j++)
@@ -550,7 +557,7 @@ void eng_note_on(uint32_t note, int32_t vel_q16)
 
 void eng_clock_tick(void)
 {
-    E.clk_ticks++;
+    clk_ticks++;
 }
 
 void eng_all_notes_off(void)
@@ -580,8 +587,8 @@ static void m_fm1(node_t *nd, uint32_t n)
     fill(nd->out[FM1_O_K3], EF(nd, FM1_P_K3), n);
     fill(nd->out[FM1_O_K4], EF(nd, FM1_P_K4), n);
     {                                   /* clock: a pulse of half a block per block that saw a tick; nothing without a source */
-        uint32_t hi = E.clk_seen != E.clk_ticks ? (n + 1u) / 2u : 0u, i;
-        E.clk_seen = E.clk_ticks;
+        uint32_t hi = E.clk_seen != clk_ticks ? (n + 1u) / 2u : 0u, i;
+        E.clk_seen = clk_ticks;
         for (i = 0; i < n; i++)
             nd->out[FM1_O_CLOCK][i] = i < hi ? ENG_ONE : 0;
     }
@@ -1056,7 +1063,7 @@ static void process(node_t *nd, uint32_t n)
     }
 }
 
-void eng_render(int32_t *left, int32_t *right, uint32_t total)
+static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the current voice alone, clamped */
 {
     uint32_t off, i, k, s;
     for (i = 0; i < total; i++)
@@ -1095,4 +1102,73 @@ void eng_render(int32_t *left, int32_t *right, uint32_t total)
         left[i] = clampi(left[i], -ENG_ONE, ENG_ONE);
         right[i] = clampi(right[i], -ENG_ONE, ENG_ONE);
     }
+}
+
+void eng_voice_select(uint32_t v)
+{
+    if (v < ENG_VOICES)
+        eng_p = &EV[v];
+}
+
+uint32_t eng_voice(void) { return VOICE_NO; }
+
+static volatile int32_t vgain[ENG_VOICES] = {ENG_ONE, ENG_ONE};   /* the mixer: each voice's level, Q16 (0 = muted) */
+
+void eng_voice_gain(uint32_t v, int32_t q16)
+{
+    if (v < ENG_VOICES)
+        vgain[v] = q16 < 0 ? 0 : q16 > ENG_ONE ? ENG_ONE : q16;
+}
+
+/* the voices of the patch, mixed: voice 1 into left / right, the others added, then clamped */
+void eng_render(int32_t *left, int32_t *right, uint32_t total)
+{
+    eng_t *keep = eng_p;                /* the audio ISR may run in the middle of a panel call: give the pointer back */
+    uint32_t v, off, i;
+    int32_t tl[ENG_BLOCK], tr[ENG_BLOCK];
+    eng_p = &EV[0];
+    render_voice(left, right, total);
+    if (vgain[0] != ENG_ONE)
+        for (i = 0; i < total; i++) {
+            left[i] = mul16(left[i], vgain[0]);
+            right[i] = mul16(right[i], vgain[0]);
+        }
+    for (v = 1; v < ENG_VOICES; v++) {
+        eng_p = &EV[v];
+        if (!E.loaded)
+            continue;
+        for (off = 0; off < total; off += ENG_BLOCK) {
+            uint32_t n = total - off < ENG_BLOCK ? total - off : ENG_BLOCK;
+            render_voice(tl, tr, n);
+            for (i = 0; i < n; i++) {
+                left[off + i] = clampi(left[off + i] + mul16(tl[i], vgain[v]), -ENG_ONE, ENG_ONE);
+                right[off + i] = clampi(right[off + i] + mul16(tr[i], vgain[v]), -ENG_ONE, ENG_ONE);
+            }
+        }
+    }
+    eng_p = keep;
+}
+
+void eng_note_on_v(uint32_t v, uint32_t note, int32_t vel_q16)     /* a note on one voice, whichever the panel has selected */
+{
+    eng_t *keep = eng_p;
+    eng_voice_select(v);
+    eng_note_on(note, vel_q16);
+    eng_p = keep;
+}
+
+void eng_note_off_v(uint32_t v, uint32_t note)
+{
+    eng_t *keep = eng_p;
+    eng_voice_select(v);
+    eng_note_off(note);
+    eng_p = keep;
+}
+
+void eng_all_notes_off_v(uint32_t v)
+{
+    eng_t *keep = eng_p;
+    eng_voice_select(v);
+    eng_all_notes_off();
+    eng_p = keep;
 }

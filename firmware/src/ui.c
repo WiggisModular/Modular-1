@@ -8,15 +8,45 @@
  *   y  29  CPU                          y 120  K1..K4 rows        y 200 P1, P2 */
 #define C_BG 0x0000u
 #define C_FG 0xFFFFu
-#define C_ACC 0xFD20u
+/* the accent: each voice has its own colour (orange, purple, cyan, green) */
+static const uint16_t VOICE_COLOR[ENG_VOICES] = {0xFD20u, 0xA19Fu, 0x07FFu, 0x7FE0u};
+#define C_ACC (VOICE_COLOR[eng_voice()])
 #define C_DIM 0x7BEFu
 #define C_RED 0xF800u
 
-static uint32_t cur_preset;
-static int load_err;
-static const char *patch_label = "";
-static uint8_t page;                            /* 0: the selected module, 1..3: the arpeggiator pages MELODY, RHYTHM, CHAOS (arp_ui.c) */
-static uint32_t sel;                            /* the module the knobs act on (SELECT turns it) */
+/* the panel state of each voice (the patch it runs): SEL switches the voice the keys, knobs and LCD act on (eng_voice_select) */
+static struct {
+    uint32_t preset, module;               /* the preset in the list; the module the knobs act on (SELECT turns it) */
+    int load_err;
+    const char *label;
+} vs[ENG_VOICES];
+#define cur_preset (vs[eng_voice()].preset)
+#define load_err (vs[eng_voice()].load_err)
+#define patch_label (vs[eng_voice()].label)
+#define PAGE_MIXER 4u                           /* GLO: the mixer (menu.c) */
+#define PAGE_MENU 5u                            /* HOME held: the settings menu (menu.c) */
+static uint8_t page;                            /* 0: the selected module, 1..3: the arpeggiator pages MELODY, RHYTHM, CHAOS (arp_ui.c), 4 mixer, 5 menu */
+
+/* the settings of the menu (menu.c); saved with the state (SAVE) */
+static struct {
+    uint8_t leds;                       /* the idle buttons glow: 0 off, 1 dim low, 2 dim higher */
+    uint8_t cpu_bar;                    /* the CPU load in the top bar */
+    uint8_t accel;                      /* a knob turned fast steps 5 times as far */
+    uint8_t ch[ENG_VOICES];             /* the MIDI channel of each voice: 1..16, 0 all (omni) */
+    uint8_t clock_in;                   /* MIDI clock drives the clock output */
+    uint8_t prog_chg;                   /* MIDI program change loads a preset */
+} cfg = {2, 1, 1, {1, 2, 3, 4}, 1, 1};
+static void cfg_defaults(void)
+{
+    cfg.cpu_bar = cfg.accel = cfg.clock_in = cfg.prog_chg = 1;
+    cfg.leds = 2;
+    cfg.ch[0] = 1;
+    cfg.ch[1] = 2;
+    cfg.ch[2] = 3;
+    cfg.ch[3] = 4;
+}
+static uint32_t cpu_pct;                /* the audio ISR's peak time over the last half second, in % of the 2.9 ms half buffer */
+#define sel (vs[eng_voice()].module)
 static volatile uint8_t ui_dirty;               /* 1: the knob rows need a redraw, 2: the module changed too (title, picture) */
 static int32_t octave;                          /* the keys' octave shift, -3..3 (OCT- / OCT+) */
 static uint32_t msg_until;                      /* a message in the top bar (SAVED ...) until this fm1_ms */
@@ -291,6 +321,25 @@ static void bar_text(const char *s, uint16_t bg)
         text_mid((240u - w) / 2u, (BAR_H - 11u) / 2u, b, C_BG, bg);
 }
 
+/* the name at the left and the CPU load at the right, black on the accent colour */
+static void bar_name_cpu(const char *s, uint16_t bg)
+{
+    char b[24], num[12], *p = num;
+    uint32_t n = str_len(s), i, w;
+    n = n > 19u ? 19u : n;
+    for (i = 0; i < n; i++)
+        b[i] = s[i];
+    b[n] = 0;
+    fmt_int(num, (int32_t)cpu_pct);
+    p = num + str_len(num);
+    *p++ = '%';
+    *p = 0;
+    w = str_len(num) * 9u;
+    lcd_fill(0, 0, 240, BAR_H, bg);
+    text_mid(8, (BAR_H - 11u) / 2u, b, C_BG, bg);
+    text_mid(232u - w, (BAR_H - 11u) / 2u, num, C_BG, bg);
+}
+
 static void header_draw(void)
 {
     if (load_err) {
@@ -301,7 +350,17 @@ static void header_draw(void)
         p[str_len(num)] = 0;
         bar_text(b, C_RED);
     } else {
-        bar_text(patch_label, C_ACC);
+        char b[40], *p = b;
+        *p++ = (char)('1' + eng_voice());
+        *p++ = ' ';
+        p = put(p, patch_label ? patch_label : "");
+        *p = 0;
+        if (cfg.cpu_bar) {
+            bar_name_cpu(b, C_ACC);
+        } else {
+            b[24] = 0;
+            bar_text(b, C_ACC);
+        }
     }
     msg_until = 0;
 }
@@ -484,10 +543,16 @@ static void module_draw(int full)
 }
 
 static void arp_view_draw(uint32_t page, int full);
+static void mixer_draw(int full);
+static void menu_draw(int full);
 
 static void view_draw(int full)                 /* whichever page is showing */
 {
-    if (page)
+    if (page == PAGE_MIXER)
+        mixer_draw(full);
+    else if (page == PAGE_MENU)
+        menu_draw(full);
+    else if (page)
         arp_view_draw(page, full);
     else
         module_draw(full);

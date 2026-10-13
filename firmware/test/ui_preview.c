@@ -48,6 +48,12 @@ static void lcd_sync(void) {}
 #include "../src/arp.c"
 #include "../src/ui.c"
 #include "../src/arp_ui.c"
+static void fm1_led_key(uint32_t id, int on) { (void)id; (void)on; }
+static void leds_avail(void) {}
+static void leds_octave(void) {}
+static void uboot_now(void) {}
+static void defaults_now(void) {}
+#include "../src/menu.c"
 
 int main(int argc, char **argv)
 {

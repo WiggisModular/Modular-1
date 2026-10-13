@@ -9,26 +9,27 @@
 #define PS_B 0x98000u
 #define PS_MAGIC 0x5450314Du            /* "M1PT" */
 #define PS_PAYLOAD 256u
+#define PS_MAX (4096u - PS_PAYLOAD)      /* the state blob (main.c): both voices' patches, the arpeggiators */
 
 typedef struct {
     uint32_t magic, seq, len, crc, rsv[4];
 } ps_hdr_t;
 
-static uint8_t ps_buf[M1_PATCH_MAX];
-static uint32_t ps_state[3];                     /* state saved with the patch: octave + 8, selected module, preset index */
-static uint32_t ps_loaded[3];                    /* the state of the patch ps_load found */
+static uint8_t ps_buf[PS_MAX] ENG_POOL;
+static uint32_t ps_state[4];                     /* state saved with the patch: octave + 8, selected module, preset index, voice 2's preset + 1 */
+static uint32_t ps_loaded[4];                    /* the state of the patch ps_load found */
 
 /* the sector's patch into ps_buf if it is valid */
 static int ps_check(uint32_t base, ps_hdr_t *h)
 {
-    if (st_read(base, h, sizeof *h) || h->magic != PS_MAGIC || h->len < 8u || h->len > M1_PATCH_MAX)
+    if (st_read(base, h, sizeof *h) || h->magic != PS_MAGIC || h->len < 8u || h->len > PS_MAX)
         return -1;
     if (st_read(base + PS_PAYLOAD, ps_buf, h->len) || m1_crc16(ps_buf, h->len) != h->crc)
         return -1;
     return 0;
 }
 
-/* the newest valid patch into dst (max M1_PATCH_MAX); 0 = found. *seq: its sequence number, *sector: which */
+/* the newest valid patch into dst (max PS_MAX); 0 = found. *seq: its sequence number, *sector: which */
 static int ps_load(uint8_t *dst, uint32_t *len, uint32_t *seq, uint32_t *sector)
 {
     ps_hdr_t a, b;
@@ -46,13 +47,13 @@ static int ps_load(uint8_t *dst, uint32_t *len, uint32_t *seq, uint32_t *sector)
         *len = b.len;
         *seq = b.seq;
         *sector = PS_B;
-        for (i = 0; i < 3u; i++)
+        for (i = 0; i < 4u; i++)
             ps_loaded[i] = b.rsv[i];
     } else {
         *len = a.len;
         *seq = a.seq;
         *sector = PS_A;
-        for (i = 0; i < 3u; i++)
+        for (i = 0; i < 4u; i++)
             ps_loaded[i] = a.rsv[i];
     }
     return 0;
@@ -60,11 +61,11 @@ static int ps_load(uint8_t *dst, uint32_t *len, uint32_t *seq, uint32_t *sector)
 
 static int ps_save(const uint8_t *p, uint32_t len)
 {
-    static uint8_t cur[M1_PATCH_MAX];
+    static uint8_t cur[PS_MAX] ENG_POOL;
     ps_hdr_t h;
     uint32_t seq = 0, sector = PS_B, clen, target;
     int rc;
-    if (len < 8u || len > M1_PATCH_MAX)
+    if (len < 8u || len > PS_MAX)
         return -1;
     if (ps_load(cur, &clen, &seq, &sector) == 0)
         target = sector == PS_A ? PS_B : PS_A;
@@ -77,7 +78,7 @@ static int ps_save(const uint8_t *p, uint32_t len)
     h.rsv[0] = ps_state[0];
     h.rsv[1] = ps_state[1];
     h.rsv[2] = ps_state[2];
-    h.rsv[3] = 0;
+    h.rsv[3] = ps_state[3];
     rc = st_erase(target);
     if (!rc)
         rc = st_prog(target + PS_PAYLOAD, p, len);
@@ -86,4 +87,10 @@ static int ps_save(const uint8_t *p, uint32_t len)
     if (!rc && ps_check(target, &h))
         rc = -1;
     return rc;
+}
+
+static int ps_erase(void)                               /* the stored state away: the next boot runs the defaults */
+{
+    int a = st_erase(PS_A), b = st_erase(PS_B);
+    return a | b;
 }

@@ -38,6 +38,15 @@ int eng_find(uint32_t type);
 void eng_note_on(uint32_t note, int32_t vel_q16);
 void eng_note_off(uint32_t note);
 void eng_all_notes_off(void);
+/* the voices (patches that play together): the calls above and the patch / parameter calls act on the selected one; the
+ * _v calls name the voice (the arpeggiator plays its own). eng_render mixes all voices. */
+#define ENG_VOICES 4                  /* patches that play at once, voices 1..4 */
+void eng_voice_select(uint32_t v);
+void eng_voice_gain(uint32_t v, int32_t q16);        /* the mixer: a voice's level, Q16 (0 = muted) */
+uint32_t eng_voice(void);
+void eng_note_on_v(uint32_t v, uint32_t note, int32_t vel_q16);
+void eng_note_off_v(uint32_t v, uint32_t note);
+void eng_all_notes_off_v(uint32_t v);
 /* one clock tick (24 per quarter note); the Main module's clock output pulses once per block that saw one */
 void eng_clock_tick(void);
 /* n frames of stereo, Q16, clamped to +-1.0; any n, processed in blocks of ENG_BLOCK */

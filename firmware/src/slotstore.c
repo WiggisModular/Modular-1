@@ -15,7 +15,7 @@ typedef struct {
 } sl_hdr_t;
 _Static_assert(sizeof(sl_hdr_t) == 48u, "slot header");
 
-static uint8_t sl_buf[M1_PATCH_MAX];
+static uint8_t sl_buf[M1_PATCH_MAX] ENG_POOL;
 static uint32_t bank_mask;                       /* bit n: slot n holds a preset */
 
 static uint32_t sl_addr(uint32_t slot) { return SL_BASE + slot * 0x1000u; }

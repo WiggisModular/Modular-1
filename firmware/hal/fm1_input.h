@@ -51,8 +51,8 @@
  * follows FM1_LED_DIM_NS (one bit up or down a tick: the widths straddle the target by a bit's time). Only
  * if the whole shift were shorter than the pulse would the rest be waited (console `inp`: dim_pulse_ns,
  * dim_bits). An LED in both is fully lit. FM1_LED_DIM_DIV > 1 also skips frames (keep >= 200 Hz).
- * Two glows (MENU > LEDS): fm1_led_dim_level(0) FM1_LED_DIM_NS (DIM HI, the default), (1) FM1_LED_DIM_LO_NS
- * (DIM LO, ~1/60). The tick reads the target from fm1__dim_t (TIMER4 ticks, set here only, never divided):
+ * Three glows (MENU > LEDS): fm1_led_dim_level(0) FM1_LED_DIM_NS (~1/30), (1) FM1_LED_DIM_LO_NS (~1/60), (2) FM1_LED_DIM_HI_NS
+ * (brighter, ~1/12; Modular-1 uses 0 as DIM LOW and 2 as DIM HIGH). The tick reads the target from fm1__dim_t (TIMER4 ticks, set here only, never divided):
  * both are shorter than the shift (~3-5 us measured, dim_pulse_ns 3125 at 14 of 16 bits), so neither waits.
  * Levels: a column has one pulse, so per LED there are three: dark, the glow, lit; the pulse cannot grow towards
  * lit without a wait in the ISR (~95 us). But a second set can end inside the pulse, and a frame can be lit or
@@ -110,6 +110,9 @@
 #define FM1_SETTLE_US 10u
 #ifndef FM1_LED_DIM_NS
 #define FM1_LED_DIM_NS 3200u      /* a dim LED's pulse per frame (ns; a lit one ~95 us): ~1/30 the brightness */
+#endif
+#ifndef FM1_LED_DIM_HI_NS
+#define FM1_LED_DIM_HI_NS 8000u   /* the brighter glow (Modular-1 MENU > LEDS DIM HIGH): ~1/12; longer than the shift, so the tick waits the rest */
 #endif
 #ifndef FM1_LED_DIM_LO_NS
 #define FM1_LED_DIM_LO_NS 1600u   /* the darker glow (MENU > LEDS DIM LO): ~1/60 */
@@ -404,17 +407,18 @@ static uint16_t fm1__dim_t = FM1__DIM_T(FM1_LED_DIM_NS);   /* the pulse the tick
  * 2^24 / G (the pulse's share: B x it >> 16, 0..256), 2^30 / (65536 - G) (the lit share: (B - G) x it >> 14) */
 #define FM1__BR_G(ns) ((ns) * 65536u / (FM1_LED_TICK_US * 1000u * FM1_LED_DIM_DIV))
 #define FM1__BR(pk, ns) {(pk), FM1__BR_G(ns), (1u << 24) / FM1__BR_G(ns), (1u << 30) / (65536u - FM1__BR_G(ns))}
-static const uint32_t FM1__BR_K[2][4] = {FM1__BR(FM1_LED_BREATH_PK, FM1_LED_DIM_NS),
-                                         FM1__BR(FM1_LED_BREATH_PK_LO, FM1_LED_DIM_LO_NS)};
+static const uint32_t FM1__BR_K[3][4] = {FM1__BR(FM1_LED_BREATH_PK, FM1_LED_DIM_NS),
+                                         FM1__BR(FM1_LED_BREATH_PK_LO, FM1_LED_DIM_LO_NS),
+                                         FM1__BR(FM1_LED_BREATH_PK, FM1_LED_DIM_HI_NS)};
 static uint8_t fm1__br_sel;                       /* FM1__BR_K[it]: 0 DIM HI (OFF, INV), 1 DIM LO */
 static uint8_t fm1__mid_n = FM1_LED_MID_N, fm1__mid_ph;   /* the mid level: 1 frame lit in fm1__mid_n; this frame's */
 /* the glow (main loop, any time; fm1__dim_k follows it in a few frames): 0 FM1_LED_DIM_NS, 1 FM1_LED_DIM_LO_NS;
  * and the breath's peak with it: 0 FM1_LED_BREATH_PK, 1 FM1_LED_BREATH_PK_LO */
-static void fm1_led_dim_level(uint32_t lo)
+static void fm1_led_dim_level(uint32_t level)   /* 0 FM1_LED_DIM_NS, 1 FM1_LED_DIM_LO_NS, 2 FM1_LED_DIM_HI_NS (brighter) */
 {
-    fm1__dim_t = (uint16_t)(lo ? FM1__DIM_T(FM1_LED_DIM_LO_NS) : FM1__DIM_T(FM1_LED_DIM_NS));
-    fm1__br_sel = lo != 0u;
-    fm1__mid_n = (uint8_t)(lo ? FM1_LED_MID_N_LO : FM1_LED_MID_N);
+    fm1__dim_t = (uint16_t)(level == 1u ? FM1__DIM_T(FM1_LED_DIM_LO_NS) : level == 2u ? FM1__DIM_T(FM1_LED_DIM_HI_NS) : FM1__DIM_T(FM1_LED_DIM_NS));
+    fm1__br_sel = level > 2u ? 0u : (uint8_t)level;
+    fm1__mid_n = (uint8_t)(level == 1u ? FM1_LED_MID_N_LO : FM1_LED_MID_N);
 }
 /* column c's lit lines this frame: lit, a breath's lit frame (not dim), the mid level's lit frame */
 #define FM1__LIT(c) (fm1_led[c] | (fm1__br_lit ? fm1_led_breath[c] & ~fm1_led_dim[c] : 0u) | \

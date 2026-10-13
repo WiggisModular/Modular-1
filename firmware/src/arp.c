@@ -113,11 +113,54 @@ typedef struct {
     uint16_t bpm;                       /* 40..300 */
 } arp_cfg_t;
 
-static arp_cfg_t arp_c = {ARP_UP, 5, 60, 1, 0, 0, 0, 16, 16, 0, RATE_1_16, 120};   /* Maj Pentatonic, as the original's default set */
-static volatile uint8_t arp_dirty = 1; /* panel -> ISR: arp_c changed */
-static volatile uint8_t arp_play;       /* panel -> ISR: the transport */
-static volatile uint8_t arp_step_ui;    /* ISR -> panel: ring position of the step last played, +1 (0 = not running) */
-static volatile uint8_t arp_ui_mark;    /* ISR -> panel: counts steps, so the panel notices a change at any rate */
+/* The running state of one arpeggiator (ISR side) */
+typedef struct {
+    arp_cfg_t c;                        /* the settings in use */
+    uint8_t pool[ARP_MAX_POOL], npool;
+    uint8_t running, ppq, note_on, note;
+    uint32_t acc;                       /* sample clock: += frames * bpm, a tick every ARP_TICK_NUM */
+    uint32_t phase;                     /* Euclid steps played since the start */
+    int32_t off_in;                     /* frames until the note ends */
+    int32_t idx;                        /* cursor of UP / DOWN / INCLUDE / EXCLUDE / WALK, -1 before the first step */
+    int8_t dir;
+    uint8_t pending_repeat, first;
+    uint16_t turing;
+    uint32_t rng;
+} arp_run_t;
+
+/* One arpeggiator per voice. arp_p is the one the panel edits (the selected voice's); arp_run walks both and puts it back.
+ * The names below are the selected one's, so the panel code and the host tests read as before. */
+typedef struct {
+    arp_cfg_t cfg;                      /* panel -> ISR: the settings */
+    volatile uint8_t dirty;             /* panel -> ISR: cfg changed */
+    volatile uint8_t play;              /* panel -> ISR: the transport */
+    volatile uint8_t step_ui;           /* ISR -> panel: ring position of the step last played, +1 (0 = not running) */
+    volatile uint8_t ui_mark;           /* ISR -> panel: counts steps, so the panel notices a change at any rate */
+    arp_run_t run;
+} arp_t;
+
+#define ARP_CFG_DEFAULT {ARP_UP, 5, 60, 1, 0, 0, 0, 16, 16, 0, RATE_1_16, 120}   /* Maj Pentatonic, as the original's default set */
+#define ARP_N 4u                        /* one per voice (ENG_VOICES) */
+static arp_t AV[ARP_N] = {{ARP_CFG_DEFAULT, 1, 0, 0, 0, {.rng = 0x2545F491u}}, {ARP_CFG_DEFAULT, 1, 0, 0, 0, {.rng = 0x6C8E9CF5u}},
+                          {ARP_CFG_DEFAULT, 1, 0, 0, 0, {.rng = 0x1B873593u}}, {ARP_CFG_DEFAULT, 1, 0, 0, 0, {.rng = 0x3C6EF372u}}};
+static arp_t *arp_p = AV;
+#define arp_c (arp_p->cfg)
+#define arp_dirty (arp_p->dirty)
+#define arp_play (arp_p->play)
+#define arp_step_ui (arp_p->step_ui)
+#define arp_ui_mark (arp_p->ui_mark)
+#define AR (arp_p->run)
+#define ARP_VOICE ((uint32_t)(arp_p - AV))
+
+/* Voices 2..4 play voice 1's scale */
+static void arp_sync_scale(void)
+{
+    uint32_t v;
+    for (v = 1; v < ARP_N; v++) {
+        AV[v].cfg.scale = AV[0].cfg.scale;
+        AV[v].dirty = 1;
+    }
+}
 
 static uint32_t euclid_gate(uint32_t steps, uint32_t pulses, uint32_t i)    /* floor((i+1)p/n) - floor(ip/n) */
 {
@@ -145,19 +188,7 @@ static void arp_fix(void)
 
 /* ---- ISR side */
 
-static struct {
-    arp_cfg_t c;                        /* the settings in use */
-    uint8_t pool[ARP_MAX_POOL], npool;
-    uint8_t running, ppq, note_on, note;
-    uint32_t acc;                       /* sample clock: += frames * bpm, a tick every ARP_TICK_NUM */
-    uint32_t phase;                     /* Euclid steps played since the start */
-    int32_t off_in;                     /* frames until the note ends */
-    int32_t idx;                        /* cursor of UP / DOWN / INCLUDE / EXCLUDE / WALK, -1 before the first step */
-    int8_t dir;
-    uint8_t pending_repeat, first;
-    uint16_t turing;
-    uint32_t rng;
-} AR = {.rng = 0x2545F491u};
+
 
 static uint32_t arp_rnd(uint32_t n)     /* 0..n-1 (xorshift32) */
 {
@@ -192,7 +223,7 @@ static void arp_pool_build(void)
 static void arp_note_off(void)
 {
     if (AR.note_on) {
-        eng_note_off(AR.note);
+        eng_note_off_v(ARP_VOICE, AR.note);
         AR.note_on = 0;
     }
 }
@@ -200,6 +231,8 @@ static void arp_note_off(void)
 static void arp_apply(void)             /* the panel's settings, at a block boundary */
 {
     arp_cfg_t n = arp_c;
+    if (ARP_VOICE)
+        n.scale = AV[0].cfg.scale;      /* the other voices follow voice 1's scale */
     uint8_t pool_changed = n.scale != AR.c.scale || n.root != AR.c.root || n.octaves != AR.c.octaves;
     if (n.mode != AR.c.mode)
         AR.c.mode = n.mode, arp_cursor_reset();
@@ -293,7 +326,7 @@ static void arp_step(void)
         uint32_t v = ARP_VEL_DEFAULT;
         if (AR.c.vchaos && arp_rnd(100) < AR.c.vchaos)
             v = 1u + arp_rnd(127);
-        eng_note_on(note, (int32_t)(v * 65536u / 127u));
+        eng_note_on_v(ARP_VOICE, note, (int32_t)(v * 65536u / 127u));
     }
     AR.note = note;
     AR.note_on = 1;
@@ -302,7 +335,7 @@ static void arp_step(void)
 }
 
 /* One audio block of n frames: the transport, the note end, the clock. Called by the audio ISR before eng_render. */
-static void arp_run(uint32_t n)
+static void arp_run_one(uint32_t n)
 {
     if (arp_dirty) {
         arp_dirty = 0;
@@ -337,12 +370,29 @@ static void arp_run(uint32_t n)
     AR.acc += n * AR.c.bpm;
     while (AR.acc >= ARP_TICK_NUM) {
         AR.acc -= ARP_TICK_NUM;
-        eng_clock_tick();
+        {                               /* the clock output follows the lowest voice whose arpeggiator runs */
+            uint32_t lower = 0, i;
+            for (i = 0; i < ARP_VOICE; i++)
+                lower |= AV[i].play;
+            if (!lower)
+                eng_clock_tick();
+        }
         if (++AR.ppq >= ARP_RATE_TICKS[AR.c.rate]) {
             AR.ppq = 0;
             arp_step();
         }
     }
+}
+
+static void arp_run(uint32_t n)         /* every voice's arpeggiator */
+{
+    arp_t *keep = arp_p;
+    uint32_t v;
+    for (v = 0; v < ARP_N; v++) {
+        arp_p = &AV[v];
+        arp_run_one(n);
+    }
+    arp_p = keep;
 }
 
 /* ---- panel side: knob k (0..3) of page 1 (melody), 2 (rhythm) or 3 (chaos), `clicks` turned; returns 1 if a value changed */
@@ -371,6 +421,8 @@ static int arp_knob(uint32_t page, uint32_t k, int32_t clicks, int fast)
     }
     #undef BUMP
     arp_fix();
+    if (!ARP_VOICE && o.scale != arp_c.scale)
+        arp_sync_scale();
     if (o.mode == arp_c.mode && o.scale == arp_c.scale && o.root == arp_c.root && o.bpm == arp_c.bpm &&
         o.steps == arp_c.steps && o.pulses == arp_c.pulses && o.rot == arp_c.rot && o.rate == arp_c.rate &&
         o.chaos == arp_c.chaos && o.vchaos == arp_c.vchaos && o.rchaos == arp_c.rchaos && o.octaves == arp_c.octaves)
