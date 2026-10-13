@@ -78,10 +78,14 @@ int main(int argc, char **argv)
         arp_step_ui = (uint8_t)atoi(argv[6]);
     }
     booting = 0;
-    if (argc > 7)
-        menu_tab = (uint8_t)atoi(argv[7]);                  /* page 5: the menu's tab (4 = MANUAL) */
-    if (argc > 8)
-        man_top = (uint32_t)atoi(argv[8]);                  /* .. and the first line of the manual */
+    if (argc > 7) {                                         /* page 5: the menu's tab (4 = MANUAL) */
+        int t = atoi(argv[7]);
+        menu_tab = (uint8_t)(t < 0 ? 0 : t >= MT_COUNT ? MT_COUNT - 1 : t);
+    }
+    if (argc > 8) {                                         /* .. and the first line of the manual */
+        int t = atoi(argv[8]), max = (int)MAN_N - (int)MAN_VIS;
+        man_top = (uint32_t)(t < 0 ? 0 : t > max ? max : t);
+    }
     patch_label = PRESET_LIST[p].name;
     screen_idle();
     f = fopen(argv[1], "wb");

@@ -438,7 +438,6 @@ static void patch_boot(void)                    /* the stored state if there is 
             state_unpack(ps_loaded[0]);
             leds_avail();
             leds_octave();
-            screen_idle();
             boot_msg = buf[0] == BLOB_MAGIC ? "STATE RESTORED" : "PATCH RESTORED";
             boot_msg_ms = 2000;
             return;
@@ -560,12 +559,12 @@ static void knobs_poll(void)
     uint32_t k, j, n = (uint32_t)eng_nmodules();
     for (k = 0; k < 7u; k++)
         st[k] = fm1_enc_take(k);
-    if (st[6]) {
-        preset_step(st[6]);
-        return;
-    }
     if (page == PAGE_MENU) {                        /* the settings menu: ALGO tabs, PRESET rows, K1..K4 the value */
         menu_knobs(st);
+        return;
+    }
+    if (st[6]) {
+        preset_step(st[6]);
         return;
     }
     if (page == PAGE_MIXER) {                       /* K1 / K2: the level of voice 1 / 2 */
@@ -899,6 +898,39 @@ static void uboot_now(void)                             /* the update loader (al
     fm1_enter_uboot();
 }
 
+/* USB host requests: the editor's SysEx (proto.c) before the update protocol's, the M-UPGRADE handshake and upgrade, the
+ * UBOOT SysEx. Run by the main loop and while the loading screen waits, so a host is answered from the start. */
+static void host_poll(void)
+{
+    {   /* the editor's SysEx (proto.c) before the update protocol's */
+        const uint8_t *fp;
+        uint32_t fn;
+        if (ota_frame_get(&fp, &fn) && m1_handle(fp, fn))
+            ota_frame_done();
+    }
+    ota_service();                                  /* M-UPGRADE handshake */
+    if (usb.ota_req) {                              /* M-UPGRADE upgrade command */
+        usb.ota_req = 0;
+        eng_run = 0;
+        if (flash_ok)
+            ota_session();                          /* returns only if nothing was committed */
+        if (m1_apply(m1_cur, m1_cur_len) == 0)
+            m1_set_current(m1_cur, m1_cur_len);
+        else
+            preset_load(cur_preset);
+    }
+    if (usb.uboot_req) {                            /* SysEx F0 22 24 35 7D F7 from the host */
+        fm1_audio_stop();
+        lcd_fill(0, 0, 240, 240, C_BG);
+        text5x7(12, 110, "UBOOT (USB)", 3, C_ACC, C_BG);
+        fm1_delay_ms(20);
+        usb_detach();
+        fm1_delay_ms(30);
+        bootguard.pending = 0;
+        fm1_enter_uboot();
+    }
+}
+
 static void fm1_main(void)
 {
     uint32_t t_btn = 0;
@@ -924,18 +956,19 @@ static void fm1_main(void)
     fm1_delay_ms(30);
     boot_step("STATE");
     patch_boot();
-    while (fm1_ms - t_splash < SPLASH_MS) {             /* the screen stays up (USB is served); the bar fills with the time left */
-        fm1_wdt_feed();
+    while (fm1_ms - t_splash < SPLASH_MS) {             /* the screen stays up; the bar fills with the time; MIDI and the host */
+        fm1_wdt_feed();                                 /* are served meanwhile (notes play, the editor and flasher get answers) */
         usb_retry(fm1_ms);
+        midi_drain();
+        host_poll();
         boot_step(BOOT_READY);
     }
-    boot_step(BOOT_READY);
     booting = 0;
     lcd_fill(0, 0, 240, 240, C_BG);
     screen_idle();                                      /* the top bar and the page */
     if (boot_msg)
         ui_msg(boot_msg, boot_msg_ms);
-    ui_dirty = 2;
+    t_btn = fm1_ms;                                     /* the OCT- + OCT+ hold counts from here, not from power-up */
     leds_arp();
     leds_avail();
     for (;;) {
@@ -968,33 +1001,7 @@ static void fm1_main(void)
             else if (fm1_ms - t_btn > 5000u)
                 uboot_now();
         }
-        {   /* the editor's SysEx (proto.c) before the update protocol's */
-            const uint8_t *fp;
-            uint32_t fn;
-            if (ota_frame_get(&fp, &fn) && m1_handle(fp, fn))
-                ota_frame_done();
-        }
-        ota_service();                                  /* M-UPGRADE handshake */
-        if (usb.ota_req) {                              /* M-UPGRADE upgrade command */
-            usb.ota_req = 0;
-            eng_run = 0;
-            if (flash_ok)
-                ota_session();                          /* returns only if nothing was committed */
-            if (m1_apply(m1_cur, m1_cur_len) == 0)
-                m1_set_current(m1_cur, m1_cur_len);
-            else
-                preset_load(cur_preset);
-        }
-        if (usb.uboot_req) {                            /* SysEx F0 22 24 35 7D F7 from the host */
-            fm1_audio_stop();
-            lcd_fill(0, 0, 240, 240, C_BG);
-            text5x7(12, 110, "UBOOT (USB)", 3, C_ACC, C_BG);
-            fm1_delay_ms(20);
-            usb_detach();
-            fm1_delay_ms(30);
-            bootguard.pending = 0;
-            fm1_enter_uboot();
-        }
+        host_poll();
     }
 }
 
