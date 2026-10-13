@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.1 (firmware `M1-1.0.1`, app 1.0.1)
+
+### Added
+- **Loading screen:** the name, the version, a `LOADING INPUT / AUDIO / USB / MIDI / STATE / VOICE n` line and a bar, shown while the FM-1 starts and the patches load, and for at least 5 seconds. The pages stay hidden until it is done; the restore note (STATE RESTORED or RESTORE FAILED) follows in the top bar.
+- **MANUAL tab in the settings menu:** one scrollable page (SELECT scrolls) with the controls, the MIDI mapping, the editor address and the memory limits. Control names are in the accent colour.
+
+### Changed
+- Wording: a stored sound is called a **patch** on the device and in the web app (tab "Patches", "Patch bank", "Factory patches", "Load patch…"). Only the hardware PRESET knob keeps its name.
+
+### Not verified
+- The loading screen and the manual page were checked in a host preview and flashed, but not reviewed on the display by me.
+
 ## 1.0 (firmware `M1-1.0`, app 1.0.0)
 
 Four voices, a mixer, a settings menu and a complete saved state. First version that is no longer a bring-up.

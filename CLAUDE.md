@@ -153,3 +153,13 @@ SysEx over USB MIDI. The device *pulls* blocks: it sends read requests (cmd 0x30
 - Memory: to fit four engines, per voice 24 modules, 128 cables, 40 signal buffers, one delay of `DELAY_LEN` 23000 samples (521 ms, the TS reference engine uses the same length now; the old 1.05 s did not fit), one reverb; `M1_PATCH_MAX` 2048. RAM region of app.ld is 24 KB, pool 408 KB (everything big is `ENG_POOL`: `EV`, `m1_curv`, the staging buffers). Pool headroom is 10 KB (build.py wants >= 8 KB). Preset 27 Drone's delay was 700 ms, now 500. The editor's HELLO reply reports 24 modules / 128 cables / 1 delay.
 - Saved state blob version 2 (4 patches, 4 arps, tail with channels, LED mode, mixer levels and mutes); version 1 and bare-patch records are still read. Word 1 of the record holds one selected-module byte per voice, word 2 one preset byte per voice. Boot shows STATE RESTORED (or RESTORE FAILED when a record was there but did not load).
 - LEDs: OFF / DIM LOW (the old glow, `FM1_LED_DIM_NS` 3.2 us) / DIM HIGH (`FM1_LED_DIM_HI_NS` 8 us, the tick waits the rest of the pulse); `fm1_led_dim_level(0|1|2)`.
+
+## Loading screen (built, not flashed)
+
+- The boot splash is always on now: `splash_draw` right after `lcd_init`, then `boot_step(what)` prints `LOADING INPUT / AUDIO / USB / MIDI / STATE / VOICE n` and a bar (accent colour) while `fm1_main` and `patch_boot` run; it stays up at least `SPLASH_MS` = 5 s (the bar is the elapsed time; after loading the line reads READY and USB is still served). While `booting` is set (ui.c) `screen_idle` draws nothing, so the page does not flash through; after `patch_boot` the screen is cleared and the page plus the bar are drawn, and the restore note (STATE RESTORED / RESTORE FAILED) comes from `boot_msg`. The old `M1_SPLASH` define is gone. Host preview sets `booting = 0`.
+
+## Manual tab (built, not flashed)
+
+- The settings menu has a fifth tab MANUAL (`menu.c`, text in `manual.c`): controls, MIDI mapping, editor link, memory limits, one scrollable page (SELECT or PRESET scrolls, ALGO changes tab, OCT buttons do nothing there). Lines are `MANUAL[]` entries, first character = style (`#` heading, ` ` text, `~` dim), at most 35 characters, capitals only (no `;` in the font). Keep it in step with the buttons, `midi_drain` and the limits. Preview: `tools/ui_preview.sh out.png 1 0 0 5 0 4 <first line>`.
+
+- Wording: in user-visible text (LCD manual, web app) a stored sound is a "patch", not a "preset"; only the hardware PRESET knob keeps its name. Identifiers (`PRESETS`, `preset_load`, `#presets` tab id, file names) are unchanged.
