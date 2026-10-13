@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.3 (firmware `M1-1.0.3`, app 1.0.3)
+
+### Fixed
+- The reverb module was invisible in the patch diagram on the display (no colour was defined for it, so its box and label were black on black). It is now sea green with the label RE.
+
 ## 1.0.2 (firmware `M1-1.0.2`, app 1.0.2)
 
 ### Fixed
