@@ -188,6 +188,7 @@ typedef struct {
         struct { uint32_t phase; } osc;
         struct { uint32_t phase, seed; int32_t held; uint32_t since; int32_t interval; uint16_t ticks; uint8_t clk_hi, rst_hi; } lfo;   /* interval: clock edge distance in samples, Q8 */
         struct { uint32_t seed; } noise;
+        struct { uint32_t phase, noise_clock, arp; uint16_t lfsr; uint8_t step; } chip;
         struct { int32_t v; uint8_t stage, prev; } adsr;
         struct { int32_t ic1, ic2, jc1, jc2; } flt;   /* stage 1 and stage 2 integrators */
         struct { int16_t *buf; uint32_t w, t, seen, beat; uint32_t ring[DELAY_CLK_PPQN]; uint8_t prev; } dly;
@@ -265,6 +266,9 @@ static void init_state(node_t *nd)
         break;
     case T_NOISE:
         nd->s.noise.seed = 0x1234567u;
+        break;
+    case T_CHIP:
+        nd->s.chip.lfsr = 0x7fff;
         break;
     default:
         break;
@@ -621,6 +625,64 @@ static void m_osc(node_t *nd, uint32_t n)
         out[i] = mul16(a, lvl);
     }
     nd->s.osc.phase = phase;
+}
+
+static const uint32_t CHIP_DUTY[4] = {0x20000000u, 0x40000000u, 0x80000000u, 0xC0000000u};   /* pulse 12.5, 25, 50, 75 % */
+
+/* a 4 bit level 0..15 as a signal -1..1 (the same integer steps as chipLevel in modules.ts) */
+static inline int32_t chip_level(uint32_t v) { return ((int32_t)(2u * v) - 15) * 65536 / 15; }
+
+/* The chip oscillator (modules.ts chip): pulse widths, the NES triangle / the Game Boy's wave, the noise LFSR; a fast arpeggio over a chord. */
+static void m_chip(node_t *nd, uint32_t n)
+{
+    const sig_t *pitch = nd->in[CHIP_I_PITCH];
+    sig_t *out = nd->out[CHIP_O_OUT];
+    int gb = round_q16(EF(nd, CHIP_P_CHIP)) == 1, arp = EF(nd, CHIP_P_ARP) >= 32768;
+    int32_t shape = clampi(round_q16(EF(nd, CHIP_P_SHAPE)), 0, 6), chord = clampi(round_q16(EF(nd, CHIP_P_CHORD)), 0, CHIP_NCHORD - 1);
+    int32_t base = EF(nd, CHIP_P_COARSE) / 12 + EF(nd, CHIP_P_FINE) / 1200, lvl = EF(nd, CHIP_P_LEVEL);
+    uint32_t arp_inc = (uint32_t)(((uint64_t)(uint32_t)EF(nd, CHIP_P_SPEED) << 16) / ENG_SR), len = CHIP_CHORD_LEN[chord];
+    uint32_t phase = nd->s.chip.phase, nclk = nd->s.chip.noise_clock, aph = nd->s.chip.arp, lfsr = nd->s.chip.lfsr, step = nd->s.chip.step, i;
+    for (i = 0; i < n; i++) {
+        uint32_t dt, semis = 0;
+        int32_t v;
+        if (arp) {
+            uint32_t a = aph + arp_inc;
+            if (a < aph)
+                step = (step + 1u) % len;
+            aph = a;
+            semis = CHIP_CHORD_NOTE[chord][step % len];
+        }
+        dt = exp2_scale(INC_C4, pitch[i] + base + (int32_t)((semis << 16) / 12u));
+        if (dt > DT_MAX)
+            dt = DT_MAX;
+        phase += dt;
+        if (shape <= 3) {
+            v = phase < CHIP_DUTY[shape] ? ENG_ONE : -ENG_ONE;
+        } else if (shape == 4) {
+            uint32_t idx = phase >> 27;
+            v = gb ? chip_level(CHIP_GB_WAVE[idx]) : chip_level(idx < 16u ? 15u - idx : idx - 16u);
+        } else {
+            uint64_t t = (uint64_t)nclk + ((uint64_t)dt * CHIP_NOISE_MUL);
+            uint32_t k = (uint32_t)(t >> 32);
+            nclk = (uint32_t)t;
+            if (k > 8u)
+                k = 8u;
+            while (k--) {
+                int sh = shape == 6;
+                uint32_t fb = (lfsr ^ (lfsr >> (sh && !gb ? 6 : 1))) & 1u;
+                lfsr = (lfsr >> 1) | (fb << 14);
+                if (gb && sh)
+                    lfsr = (lfsr & ~(1u << 6)) | (fb << 6);
+            }
+            v = (lfsr & 1u) ? -ENG_ONE : ENG_ONE;
+        }
+        out[i] = mul16(v, lvl);
+    }
+    nd->s.chip.phase = phase;
+    nd->s.chip.noise_clock = nclk;
+    nd->s.chip.arp = aph;
+    nd->s.chip.lfsr = (uint16_t)lfsr;
+    nd->s.chip.step = (uint8_t)step;
 }
 
 static void lfo_cycle(node_t *nd)
@@ -1067,6 +1129,7 @@ static void process(node_t *nd, uint32_t n)
     case T_MIXER: m_mixer(nd, n); break;
     case T_DELAY: m_delay(nd, n); break;
     case T_REVERB: m_reverb(nd, n); break;
+    case T_CHIP: m_chip(nd, n); break;
     default: break;                      /* output: read by eng_render */
     }
 }

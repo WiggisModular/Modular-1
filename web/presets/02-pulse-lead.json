@@ -1,39 +1,39 @@
 {
  "version": 2,
- "name": "Wobble 2",
+ "name": "Pulse Lead",
  "modules": [
   {
    "id": 1,
    "type": "fm1",
-   "x": 26,
-   "y": 26,
+   "x": 15,
+   "y": 23,
    "params": {
-    "k1": 0.6904,
-    "k2": 0.5,
-    "k3": 0.4986,
-    "k4": 0.5
+    "k1": 0.9585,
+    "k2": 0.017,
+    "k3": 0.0298,
+    "k4": 0.2
    }
   },
   {
    "id": 2,
    "type": "osc",
-   "x": 299,
-   "y": 26,
+   "x": 193,
+   "y": 23,
    "params": {
     "wave": 3,
-    "pw": 0.5,
-    "coarse": -12,
+    "pw": 0.3,
+    "coarse": 0,
     "fine": 0,
     "pm": 0,
-    "level": 0.5
+    "level": 0.7
    },
    "att": [
-    1,
+    0.2,
     1
    ],
    "map": {
     "p1": [
-     "wave"
+     "pw"
     ],
     "p2": [
      "pw"
@@ -55,15 +55,18 @@
   {
    "id": 3,
    "type": "lfo",
-   "x": 299,
-   "y": 546,
+   "x": 400,
+   "y": 23,
    "params": {
     "wave": 1,
     "rate": 0.02,
-    "depth": 1
+    "depth": 1,
+    "sync": 0,
+    "div": 6,
+    "bpm": 120
    },
    "att": [
-    0.3,
+    1,
     1
    ],
    "map": {
@@ -82,24 +85,26 @@
     "k3": [
      "depth"
     ],
-    "k4": []
+    "k4": [
+     "sync"
+    ]
    }
   },
   {
    "id": 4,
    "type": "filter",
-   "x": 572,
-   "y": 26,
+   "x": 608,
+   "y": 23,
    "params": {
     "cutoff": 20,
-    "res": 0.4,
-    "cvamt": 2.5,
+    "res": 0.2,
+    "cvamt": 1,
     "track": 0,
     "morph": 0
    },
    "att": [
     1,
-    0.6
+    1
    ],
    "map": {
     "p1": [
@@ -125,13 +130,13 @@
   {
    "id": 5,
    "type": "adsr",
-   "x": 845,
-   "y": 546,
+   "x": 816,
+   "y": 23,
    "params": {
-    "a": 0.003,
-    "d": 0.1,
-    "s": 1,
-    "r": 0.1
+    "a": 0.01,
+    "d": 0.001,
+    "s": 0.8,
+    "r": 0.2
    },
    "att": [
     1,
@@ -139,7 +144,7 @@
    ],
    "map": {
     "p1": [
-     "a"
+     "d"
     ],
     "p2": [
      "d"
@@ -161,13 +166,13 @@
   {
    "id": 6,
    "type": "vca",
-   "x": 845,
-   "y": 26,
+   "x": 816,
+   "y": 237,
    "params": {
-    "gain": 0.5
+    "gain": 1
    },
    "att": [
-    0.5,
+    1,
     1
    ],
    "map": {
@@ -185,15 +190,82 @@
   },
   {
    "id": 7,
-   "type": "output",
-   "x": 1391,
-   "y": 26,
+   "type": "delay",
+   "x": 1024,
+   "y": 23,
    "params": {
-    "level": 0.7
+    "time": 280,
+    "fb": 0.35,
+    "mix": 0,
+    "sync": 0,
+    "pingpong": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "mix"
+    ],
+    "p2": [
+     "fb"
+    ],
+    "k1": [
+     "time"
+    ],
+    "k2": [
+     "fb"
+    ],
+    "k3": [
+     "mix"
+    ],
+    "k4": [
+     "sync"
+    ]
+   }
+  },
+  {
+   "id": 8,
+   "type": "output",
+   "x": 1232,
+   "y": 23,
+   "params": {
+    "level": 0.77
    }
   }
  ],
  "cables": [
+  {
+   "from": {
+    "module": 1,
+    "port": "pitch"
+   },
+   "to": {
+    "module": 2,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 3,
+    "port": "out"
+   },
+   "to": {
+    "module": 2,
+    "port": "p1"
+   }
+  },
+  {
+   "from": {
+    "module": 2,
+    "port": "out"
+   },
+   "to": {
+    "module": 4,
+    "port": "in"
+   }
+  },
   {
    "from": {
     "module": 1,
@@ -207,7 +279,7 @@
   {
    "from": {
     "module": 4,
-    "port": "lp12"
+    "port": "lp24"
    },
    "to": {
     "module": 6,
@@ -226,41 +298,21 @@
   },
   {
    "from": {
-    "module": 1,
-    "port": "pitch"
-   },
-   "to": {
-    "module": 2,
-    "port": "pitch"
-   }
-  },
-  {
-   "from": {
-    "module": 2,
-    "port": "out"
-   },
-   "to": {
-    "module": 4,
-    "port": "in"
-   }
-  },
-  {
-   "from": {
-    "module": 3,
-    "port": "out"
-   },
-   "to": {
-    "module": 4,
-    "port": "cv"
-   }
-  },
-  {
-   "from": {
     "module": 6,
     "port": "out"
    },
    "to": {
     "module": 7,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 7,
+    "port": "out"
+   },
+   "to": {
+    "module": 8,
     "port": "l"
    }
   },
@@ -280,8 +332,8 @@
     "port": "k2"
    },
    "to": {
-    "module": 4,
-    "port": "p2"
+    "module": 3,
+    "port": "p1"
    }
   },
   {
@@ -290,7 +342,7 @@
     "port": "k3"
    },
    "to": {
-    "module": 3,
+    "module": 5,
     "port": "p1"
    }
   },
@@ -300,7 +352,7 @@
     "port": "k4"
    },
    "to": {
-    "module": 6,
+    "module": 7,
     "port": "p1"
    }
   }

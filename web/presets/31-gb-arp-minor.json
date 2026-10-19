@@ -1,75 +1,77 @@
 {
  "version": 2,
- "name": "Echo Pluck",
+ "name": "GB Arp Minor",
  "modules": [
   {
    "id": 1,
    "type": "fm1",
-   "x": 26,
-   "y": 26,
+   "x": 15,
+   "y": 23,
    "params": {
-    "k1": 0.5,
-    "k2": 0.5,
-    "k3": 0.3321,
-    "k4": 0.5
+    "k1": 0.3333,
+    "k2": 0.2174,
+    "k3": 0.0124,
+    "k4": 0.2
    }
   },
   {
    "id": 2,
-   "type": "osc",
-   "x": 299,
-   "y": 26,
+   "type": "chip",
+   "x": 193,
+   "y": 23,
    "params": {
-    "wave": 1,
-    "pw": 0.5,
+    "chip": 1,
+    "shape": 0,
+    "arp": 1,
+    "chord": 7,
+    "speed": 5,
     "coarse": 0,
     "fine": 0,
-    "pm": 0,
-    "level": 0.65
+    "level": 0.7
    },
    "att": [
-    0.5,
+    1,
     1
    ],
    "map": {
     "p1": [
-     "level"
+     "shape"
     ],
     "p2": [
-     "pw"
+     "speed"
     ],
     "k1": [
-     "wave"
+     "chip"
     ],
     "k2": [
-     "pw"
+     "shape"
     ],
     "k3": [
-     "coarse"
+     "arp"
     ],
     "k4": [
-     "fine"
+     "chord"
     ]
    }
   },
   {
    "id": 3,
    "type": "adsr",
-   "x": 572,
-   "y": 546,
+   "x": 816,
+   "y": 23,
    "params": {
-    "a": 0.001,
-    "d": 0.001,
-    "s": 0,
-    "r": 0.1
+    "a": 0.002,
+    "d": 0.25,
+    "s": 0.7,
+    "r": 0.001
    },
    "att": [
-    0.15,
+    1,
     1
    ],
    "map": {
     "p1": [
-     "d"
+     "r"
     ],
     "p2": [
      "d"
@@ -91,8 +93,8 @@
   {
    "id": 4,
    "type": "vca",
-   "x": 572,
-   "y": 26,
+   "x": 816,
+   "y": 237,
    "params": {
     "gain": 1
    },
@@ -116,23 +118,25 @@
   {
    "id": 5,
    "type": "delay",
-   "x": 1118,
-   "y": 26,
+   "x": 1024,
+   "y": 23,
    "params": {
-    "time": 110.25,
-    "fb": 0.6,
-    "mix": 0
+    "time": 214,
+    "fb": 0.35,
+    "mix": 0,
+    "sync": 0,
+    "pingpong": 0
    },
    "att": [
-    0.5,
+    1,
     1
    ],
    "map": {
     "p1": [
-     "time"
+     "mix"
     ],
     "p2": [
-     "mix"
+     "fb"
     ],
     "k1": [
      "time"
@@ -143,20 +147,32 @@
     "k3": [
      "mix"
     ],
-    "k4": []
+    "k4": [
+     "sync"
+    ]
    }
   },
   {
    "id": 6,
    "type": "output",
-   "x": 1391,
-   "y": 26,
+   "x": 1232,
+   "y": 23,
    "params": {
-    "level": 0.7
+    "level": 0.89
    }
   }
  ],
  "cables": [
+  {
+   "from": {
+    "module": 1,
+    "port": "pitch"
+   },
+   "to": {
+    "module": 2,
+    "port": "pitch"
+   }
+  },
   {
    "from": {
     "module": 1,
@@ -189,16 +205,6 @@
   },
   {
    "from": {
-    "module": 1,
-    "port": "pitch"
-   },
-   "to": {
-    "module": 2,
-    "port": "pitch"
-   }
-  },
-  {
-   "from": {
     "module": 4,
     "port": "out"
    },
@@ -223,7 +229,7 @@
     "port": "k1"
    },
    "to": {
-    "module": 5,
+    "module": 2,
     "port": "p1"
    }
   },
@@ -234,7 +240,7 @@
    },
    "to": {
     "module": 2,
-    "port": "p1"
+    "port": "p2"
    }
   },
   {
@@ -254,7 +260,7 @@
    },
    "to": {
     "module": 5,
-    "port": "p2"
+    "port": "p1"
    }
   }
  ]

@@ -1,31 +1,56 @@
 {
  "version": 2,
- "name": "Wobble bass",
+ "name": "Breath Pad",
  "modules": [
   {
    "id": 1,
    "type": "fm1",
-   "x": 26,
-   "y": 52,
+   "x": 15,
+   "y": 23,
    "params": {
-    "k1": 0.7149,
-    "k2": 0.5,
-    "k3": 0.2485,
-    "k4": 0.5
+    "k1": 0.8476,
+    "k2": 0.35,
+    "k3": 0.4,
+    "k4": 0.1598
    }
   },
   {
    "id": 2,
-   "type": "osc",
-   "x": 286,
-   "y": 26,
+   "type": "noise",
+   "x": 193,
+   "y": 23,
    "params": {
-    "wave": 3,
+    "level": 1
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "level"
+    ],
+    "p2": [],
+    "k1": [
+     "level"
+    ],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 3,
+   "type": "osc",
+   "x": 193,
+   "y": 140,
+   "params": {
+    "wave": 1,
     "pw": 0.5,
-    "coarse": -12,
+    "coarse": 0,
     "fine": 0,
     "pm": 0,
-    "level": 0.8
+    "level": 0.9
    },
    "att": [
     1,
@@ -53,53 +78,56 @@
    }
   },
   {
-   "id": 3,
-   "type": "lfo",
-   "x": 286,
-   "y": 559,
+   "id": 4,
+   "type": "mixer",
+   "x": 400,
+   "y": 23,
    "params": {
-    "wave": 0,
-    "rate": 0.02,
-    "depth": 1
+    "l1": 0.9,
+    "l2": 0.6,
+    "l3": 0.7,
+    "l4": 0.7
    },
    "att": [
-    0.3,
+    1,
     1
    ],
    "map": {
     "p1": [
-     "rate"
+     "l1"
     ],
     "p2": [
-     "rate"
+     "l2"
     ],
     "k1": [
-     "wave"
+     "l1"
     ],
     "k2": [
-     "rate"
+     "l2"
     ],
     "k3": [
-     "depth"
+     "l3"
     ],
-    "k4": []
+    "k4": [
+     "l4"
+    ]
    }
   },
   {
-   "id": 4,
+   "id": 5,
    "type": "filter",
-   "x": 572,
-   "y": 26,
+   "x": 608,
+   "y": 23,
    "params": {
     "cutoff": 20,
-    "res": 0.3,
-    "cvamt": 1.5,
+    "res": 0,
+    "cvamt": 0.8,
     "track": 0,
     "morph": 0
    },
    "att": [
     1,
-    0.6
+    1
    ],
    "map": {
     "p1": [
@@ -123,15 +151,53 @@
    }
   },
   {
-   "id": 5,
-   "type": "adsr",
-   "x": 572,
-   "y": 559,
+   "id": 6,
+   "type": "lfo",
+   "x": 400,
+   "y": 237,
    "params": {
-    "a": 0.005,
-    "d": 0.1,
-    "s": 0.9,
-    "r": 0.15
+    "wave": 0,
+    "rate": 0.25,
+    "depth": 0.4,
+    "sync": 0,
+    "div": 6,
+    "bpm": 120
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "wave"
+    ],
+    "p2": [
+     "rate"
+    ],
+    "k1": [
+     "wave"
+    ],
+    "k2": [
+     "rate"
+    ],
+    "k3": [
+     "depth"
+    ],
+    "k4": [
+     "sync"
+    ]
+   }
+  },
+  {
+   "id": 7,
+   "type": "adsr",
+   "x": 816,
+   "y": 23,
+   "params": {
+    "a": 0.001,
+    "d": 0.6,
+    "s": 0.8,
+    "r": 1.5
    },
    "att": [
     1,
@@ -159,15 +225,15 @@
    }
   },
   {
-   "id": 6,
+   "id": 8,
    "type": "vca",
-   "x": 858,
-   "y": 26,
+   "x": 816,
+   "y": 237,
    "params": {
-    "gain": 0.5
+    "gain": 1.65
    },
    "att": [
-    0.5,
+    1,
     1
    ],
    "map": {
@@ -184,12 +250,45 @@
    }
   },
   {
-   "id": 7,
-   "type": "output",
-   "x": 1118,
-   "y": 52,
+   "id": 9,
+   "type": "reverb",
+   "x": 1024,
+   "y": 23,
    "params": {
-    "level": 0.7
+    "size": 0.85,
+    "damp": 0.4,
+    "mix": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "mix"
+    ],
+    "p2": [
+     "damp"
+    ],
+    "k1": [
+     "size"
+    ],
+    "k2": [
+     "damp"
+    ],
+    "k3": [
+     "mix"
+    ],
+    "k4": []
+   }
+  },
+  {
+   "id": 10,
+   "type": "output",
+   "x": 1232,
+   "y": 23,
+   "params": {
+    "level": 1
    }
   }
  ],
@@ -200,7 +299,7 @@
     "port": "pitch"
    },
    "to": {
-    "module": 2,
+    "module": 3,
     "port": "pitch"
    }
   },
@@ -211,7 +310,7 @@
    },
    "to": {
     "module": 4,
-    "port": "in"
+    "port": "in1"
    }
   },
   {
@@ -221,6 +320,26 @@
    },
    "to": {
     "module": 4,
+    "port": "in2"
+   }
+  },
+  {
+   "from": {
+    "module": 4,
+    "port": "out"
+   },
+   "to": {
+    "module": 5,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 6,
+    "port": "out"
+   },
+   "to": {
+    "module": 5,
     "port": "cv"
    }
   },
@@ -230,37 +349,47 @@
     "port": "gate"
    },
    "to": {
-    "module": 5,
+    "module": 7,
     "port": "gate"
    }
   },
   {
    "from": {
-    "module": 4,
-    "port": "lp12"
+    "module": 5,
+    "port": "bp"
    },
    "to": {
-    "module": 6,
+    "module": 8,
     "port": "in"
    }
   },
   {
    "from": {
-    "module": 5,
+    "module": 7,
     "port": "env"
    },
    "to": {
-    "module": 6,
+    "module": 8,
     "port": "cv"
    }
   },
   {
    "from": {
-    "module": 6,
+    "module": 8,
     "port": "out"
    },
    "to": {
-    "module": 7,
+    "module": 9,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 9,
+    "port": "out"
+   },
+   "to": {
+    "module": 10,
     "port": "l"
    }
   },
@@ -270,7 +399,7 @@
     "port": "k1"
    },
    "to": {
-    "module": 4,
+    "module": 5,
     "port": "p1"
    }
   },
@@ -280,7 +409,7 @@
     "port": "k2"
    },
    "to": {
-    "module": 4,
+    "module": 5,
     "port": "p2"
    }
   },
@@ -290,7 +419,7 @@
     "port": "k3"
    },
    "to": {
-    "module": 3,
+    "module": 9,
     "port": "p1"
    }
   },
@@ -300,7 +429,7 @@
     "port": "k4"
    },
    "to": {
-    "module": 6,
+    "module": 7,
     "port": "p1"
    }
   }

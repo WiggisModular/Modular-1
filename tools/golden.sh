@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Compare the C engine (firmware/src/engine.c, built for the host) with the TypeScript engine on golden vectors.
 #   tools/golden.sh [REL_RMS]      (default: error rms <= 5 % of the reference rms; run inside `nix develop`)
+# The chip-* patches (hard edges, no band limiting) are held to 10 % instead.
 # The metric is rms, not max: waveforms with edges (saw, square) shift by a fraction of a sample between the float
 # reference and the Q16 pitch grid, which gives short spikes at the edges but no audible difference.
 set -e
@@ -17,6 +18,8 @@ for p in build/golden/*.m1p; do
   n="${p%.m1p}"
   out="$(build/host_test "$p" "$n.ev" "$n.f32")" || { echo "FAIL $(basename "$n"): $out"; fail=1; continue; }
   err="$(echo "$out" | sed 's/.*rel_rms \([0-9.]*\).*/\1/')"
-  if awk "BEGIN{exit !($err > $TOL)}"; then echo "FAIL $(basename "$n"): $out"; fail=1; else echo "ok   $(basename "$n"): $out"; fi
+  tol="$TOL"
+  case "$(basename "$n")" in chip-*) tol=0.10 ;; esac   # the chip oscillators are not band-limited: edges land on a different sample now and then
+  if awk "BEGIN{exit !($err > $tol)}"; then echo "FAIL $(basename "$n"): $out"; fail=1; else echo "ok   $(basename "$n"): $out"; fi
 done
 exit $fail

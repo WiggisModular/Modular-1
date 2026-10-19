@@ -1,39 +1,39 @@
 {
  "version": 2,
- "name": "Square Lead",
+ "name": "Siren",
  "modules": [
   {
    "id": 1,
    "type": "fm1",
-   "x": 26,
-   "y": 26,
+   "x": 15,
+   "y": 23,
    "params": {
-    "k1": 0.9725,
-    "k2": 0.4167,
-    "k3": 0.5,
-    "k4": 0.2
+    "k1": 0.0195,
+    "k2": 0.5563,
+    "k3": 0.15,
+    "k4": 0.0624
    }
   },
   {
    "id": 2,
    "type": "osc",
-   "x": 299,
-   "y": 26,
+   "x": 193,
+   "y": 23,
    "params": {
-    "wave": 3,
-    "pw": 0.275,
-    "coarse": 0,
+    "wave": 0,
+    "pw": 0.5,
+    "coarse": 12,
     "fine": 0,
     "pm": 0,
-    "level": 0.7
+    "level": 0.8
    },
    "att": [
-    0.5,
+    1,
     1
    ],
    "map": {
     "p1": [
-     "pw"
+     "wave"
     ],
     "p2": [
      "pw"
@@ -54,51 +54,16 @@
   },
   {
    "id": 3,
-   "type": "filter",
-   "x": 572,
-   "y": 26,
+   "type": "lfo",
+   "x": 400,
+   "y": 23,
    "params": {
-    "cutoff": 20,
-    "res": 0,
-    "cvamt": 1,
-    "track": 0,
-    "morph": 0
-   },
-   "att": [
-    1,
-    0.6
-   ],
-   "map": {
-    "p1": [
-     "cutoff"
-    ],
-    "p2": [
-     "res"
-    ],
-    "k1": [
-     "cutoff"
-    ],
-    "k2": [
-     "res"
-    ],
-    "k3": [
-     "cvamt"
-    ],
-    "k4": [
-     "track"
-    ]
-   }
-  },
-  {
-   "id": 4,
-   "type": "adsr",
-   "x": 845,
-   "y": 546,
-   "params": {
-    "a": 0.01,
-    "d": 0.2,
-    "s": 0.7,
-    "r": 0.2
+    "wave": 1,
+    "rate": 0.02,
+    "depth": 1,
+    "sync": 0,
+    "div": 6,
+    "bpm": 120
    },
    "att": [
     1,
@@ -106,7 +71,73 @@
    ],
    "map": {
     "p1": [
-     "a"
+     "rate"
+    ],
+    "p2": [
+     "rate"
+    ],
+    "k1": [
+     "wave"
+    ],
+    "k2": [
+     "rate"
+    ],
+    "k3": [
+     "depth"
+    ],
+    "k4": [
+     "sync"
+    ]
+   }
+  },
+  {
+   "id": 4,
+   "type": "scale",
+   "x": 400,
+   "y": 302,
+   "params": {
+    "gain": -4,
+    "offset": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [
+     "gain"
+    ],
+    "k2": [
+     "offset"
+    ],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 5,
+   "type": "adsr",
+   "x": 816,
+   "y": 23,
+   "params": {
+    "a": 0.2,
+    "d": 0.2,
+    "s": 1,
+    "r": 0.001
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "r"
     ],
     "p2": [
      "d"
@@ -126,10 +157,10 @@
    }
   },
   {
-   "id": 5,
+   "id": 6,
    "type": "vca",
-   "x": 845,
-   "y": 26,
+   "x": 816,
+   "y": 237,
    "params": {
     "gain": 1
    },
@@ -151,13 +182,13 @@
    }
   },
   {
-   "id": 6,
-   "type": "delay",
-   "x": 1391,
-   "y": 26,
+   "id": 7,
+   "type": "reverb",
+   "x": 1024,
+   "y": 23,
    "params": {
-    "time": 250,
-    "fb": 0.3,
+    "size": 0.5,
+    "damp": 0.5,
     "mix": 0
    },
    "att": [
@@ -169,13 +200,13 @@
      "mix"
     ],
     "p2": [
-     "fb"
+     "damp"
     ],
     "k1": [
-     "time"
+     "size"
     ],
     "k2": [
-     "fb"
+     "damp"
     ],
     "k3": [
      "mix"
@@ -184,12 +215,12 @@
    }
   },
   {
-   "id": 7,
+   "id": 8,
    "type": "output",
-   "x": 1664,
-   "y": 26,
+   "x": 1232,
+   "y": 23,
    "params": {
-    "level": 0.7
+    "level": 0.62
    }
   }
  ],
@@ -197,41 +228,41 @@
   {
    "from": {
     "module": 1,
-    "port": "gate"
+    "port": "pitch"
    },
    "to": {
-    "module": 4,
-    "port": "gate"
+    "module": 2,
+    "port": "pitch"
    }
   },
   {
    "from": {
     "module": 3,
-    "port": "lp12"
+    "port": "out"
    },
    "to": {
-    "module": 5,
+    "module": 4,
     "port": "in"
    }
   },
   {
    "from": {
     "module": 4,
-    "port": "env"
+    "port": "out"
    },
    "to": {
-    "module": 5,
-    "port": "cv"
+    "module": 2,
+    "port": "pitch"
    }
   },
   {
    "from": {
     "module": 1,
-    "port": "pitch"
+    "port": "gate"
    },
    "to": {
-    "module": 2,
-    "port": "pitch"
+    "module": 5,
+    "port": "gate"
    }
   },
   {
@@ -240,18 +271,18 @@
     "port": "out"
    },
    "to": {
-    "module": 3,
+    "module": 6,
     "port": "in"
    }
   },
   {
    "from": {
     "module": 5,
-    "port": "out"
+    "port": "env"
    },
    "to": {
     "module": 6,
-    "port": "in"
+    "port": "cv"
    }
   },
   {
@@ -261,6 +292,16 @@
    },
    "to": {
     "module": 7,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 7,
+    "port": "out"
+   },
+   "to": {
+    "module": 8,
     "port": "l"
    }
   },
@@ -280,8 +321,8 @@
     "port": "k2"
    },
    "to": {
-    "module": 3,
-    "port": "p2"
+    "module": 4,
+    "port": "p1"
    }
   },
   {
@@ -290,7 +331,7 @@
     "port": "k3"
    },
    "to": {
-    "module": 2,
+    "module": 7,
     "port": "p1"
    }
   },
@@ -300,7 +341,7 @@
     "port": "k4"
    },
    "to": {
-    "module": 6,
+    "module": 5,
     "port": "p1"
    }
   }

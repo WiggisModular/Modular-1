@@ -1,31 +1,31 @@
 {
  "version": 2,
- "name": "Electric Piano",
+ "name": "Clav",
  "modules": [
   {
    "id": 1,
    "type": "fm1",
-   "x": 26,
-   "y": 26,
+   "x": 15,
+   "y": 23,
    "params": {
-    "k1": 0.375,
-    "k2": 0.5,
-    "k3": 0.2,
-    "k4": 0.5
+    "k1": 0.8192,
+    "k2": 0.3,
+    "k3": 0.0238,
+    "k4": 0.12
    }
   },
   {
    "id": 2,
    "type": "osc",
-   "x": 299,
-   "y": 26,
+   "x": 193,
+   "y": 23,
    "params": {
-    "wave": 0,
-    "pw": 0.5,
-    "coarse": 12,
+    "wave": 3,
+    "pw": 0.18,
+    "coarse": 0,
     "fine": 0,
     "pm": 0,
-    "level": 1
+    "level": 0.8
    },
    "att": [
     1,
@@ -54,17 +54,54 @@
   },
   {
    "id": 3,
-   "type": "adsr",
-   "x": 572,
-   "y": 546,
+   "type": "filter",
+   "x": 608,
+   "y": 23,
    "params": {
-    "a": 0.001,
-    "d": 0.0251,
-    "s": 0.15,
-    "r": 0.3
+    "cutoff": 20,
+    "res": 0,
+    "cvamt": 2,
+    "track": 0,
+    "morph": 0
    },
    "att": [
-    0.15,
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "cutoff"
+    ],
+    "p2": [
+     "res"
+    ],
+    "k1": [
+     "cutoff"
+    ],
+    "k2": [
+     "res"
+    ],
+    "k3": [
+     "cvamt"
+    ],
+    "k4": [
+     "track"
+    ]
+   }
+  },
+  {
+   "id": 4,
+   "type": "adsr",
+   "x": 608,
+   "y": 270,
+   "params": {
+    "a": 0.001,
+    "d": 0.001,
+    "s": 0,
+    "r": 0.1
+   },
+   "att": [
+    1,
     1
    ],
    "map": {
@@ -89,10 +126,46 @@
    }
   },
   {
-   "id": 4,
+   "id": 5,
+   "type": "adsr",
+   "x": 816,
+   "y": 23,
+   "params": {
+    "a": 0.001,
+    "d": 0.25,
+    "s": 0,
+    "r": 0.12
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "a"
+    ],
+    "p2": [
+     "d"
+    ],
+    "k1": [
+     "a"
+    ],
+    "k2": [
+     "d"
+    ],
+    "k3": [
+     "s"
+    ],
+    "k4": [
+     "r"
+    ]
+   }
+  },
+  {
+   "id": 6,
    "type": "vca",
-   "x": 572,
-   "y": 26,
+   "x": 816,
+   "y": 237,
    "params": {
     "gain": 1
    },
@@ -114,53 +187,16 @@
    }
   },
   {
-   "id": 5,
-   "type": "osc",
-   "x": 845,
-   "y": 26,
+   "id": 7,
+   "type": "delay",
+   "x": 1024,
+   "y": 23,
    "params": {
-    "wave": 0,
-    "pw": 0.5,
-    "coarse": 0,
-    "fine": 0,
-    "pm": 0,
-    "level": 0.8
-   },
-   "att": [
-    0.4,
-    1
-   ],
-   "map": {
-    "p1": [
-     "pm"
-    ],
-    "p2": [
-     "pw"
-    ],
-    "k1": [
-     "wave"
-    ],
-    "k2": [
-     "pw"
-    ],
-    "k3": [
-     "coarse"
-    ],
-    "k4": [
-     "fine"
-    ]
-   }
-  },
-  {
-   "id": 6,
-   "type": "adsr",
-   "x": 1118,
-   "y": 546,
-   "params": {
-    "a": 0.002,
-    "d": 1,
-    "s": 0.2,
-    "r": 0.4
+    "time": 180,
+    "fb": 0.25,
+    "mix": 0,
+    "sync": 0,
+    "pingpong": 0
    },
    "att": [
     1,
@@ -168,90 +204,32 @@
    ],
    "map": {
     "p1": [
-     "a"
+     "mix"
     ],
     "p2": [
-     "d"
+     "fb"
     ],
     "k1": [
-     "a"
+     "time"
     ],
     "k2": [
-     "d"
+     "fb"
     ],
     "k3": [
-     "s"
+     "mix"
     ],
     "k4": [
-     "r"
+     "sync"
     ]
-   }
-  },
-  {
-   "id": 7,
-   "type": "vca",
-   "x": 1118,
-   "y": 26,
-   "params": {
-    "gain": 0.5
-   },
-   "att": [
-    0.5,
-    1
-   ],
-   "map": {
-    "p1": [
-     "gain"
-    ],
-    "p2": [],
-    "k1": [
-     "gain"
-    ],
-    "k2": [],
-    "k3": [],
-    "k4": []
    }
   },
   {
    "id": 8,
-   "type": "reverb",
-   "x": 1391,
-   "y": 26,
-   "params": {
-    "size": 0.5,
-    "damp": 0.5,
-    "mix": 0
-   },
-   "att": [
-    1,
-    1
-   ],
-   "map": {
-    "p1": [
-     "mix"
-    ],
-    "p2": [
-     "damp"
-    ],
-    "k1": [
-     "size"
-    ],
-    "k2": [
-     "damp"
-    ],
-    "k3": [
-     "mix"
-    ],
-    "k4": []
-   }
-  },
-  {
-   "id": 9,
    "type": "output",
-   "x": 1664,
-   "y": 26,
+   "x": 1232,
+   "y": 23,
    "params": {
-    "level": 0.7
+    "level": 0.8
    }
   }
  ],
@@ -259,66 +237,6 @@
   {
    "from": {
     "module": 1,
-    "port": "gate"
-   },
-   "to": {
-    "module": 3,
-    "port": "gate"
-   }
-  },
-  {
-   "from": {
-    "module": 2,
-    "port": "out"
-   },
-   "to": {
-    "module": 4,
-    "port": "in"
-   }
-  },
-  {
-   "from": {
-    "module": 3,
-    "port": "env"
-   },
-   "to": {
-    "module": 4,
-    "port": "cv"
-   }
-  },
-  {
-   "from": {
-    "module": 1,
-    "port": "gate"
-   },
-   "to": {
-    "module": 6,
-    "port": "gate"
-   }
-  },
-  {
-   "from": {
-    "module": 5,
-    "port": "out"
-   },
-   "to": {
-    "module": 7,
-    "port": "in"
-   }
-  },
-  {
-   "from": {
-    "module": 6,
-    "port": "env"
-   },
-   "to": {
-    "module": 7,
-    "port": "cv"
-   }
-  },
-  {
-   "from": {
-    "module": 1,
     "port": "pitch"
    },
    "to": {
@@ -328,22 +246,72 @@
   },
   {
    "from": {
-    "module": 1,
-    "port": "pitch"
+    "module": 2,
+    "port": "out"
    },
    "to": {
-    "module": 5,
-    "port": "pitch"
+    "module": 3,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "gate"
+   },
+   "to": {
+    "module": 4,
+    "port": "gate"
    }
   },
   {
    "from": {
     "module": 4,
-    "port": "out"
+    "port": "env"
+   },
+   "to": {
+    "module": 3,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "gate"
    },
    "to": {
     "module": 5,
-    "port": "pm"
+    "port": "gate"
+   }
+  },
+  {
+   "from": {
+    "module": 3,
+    "port": "bp"
+   },
+   "to": {
+    "module": 6,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 5,
+    "port": "env"
+   },
+   "to": {
+    "module": 6,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 6,
+    "port": "out"
+   },
+   "to": {
+    "module": 7,
+    "port": "in"
    }
   },
   {
@@ -353,16 +321,6 @@
    },
    "to": {
     "module": 8,
-    "port": "in"
-   }
-  },
-  {
-   "from": {
-    "module": 8,
-    "port": "out"
-   },
-   "to": {
-    "module": 9,
     "port": "l"
    }
   },
@@ -372,7 +330,7 @@
     "port": "k1"
    },
    "to": {
-    "module": 5,
+    "module": 3,
     "port": "p1"
    }
   },
@@ -383,7 +341,7 @@
    },
    "to": {
     "module": 3,
-    "port": "p1"
+    "port": "p2"
    }
   },
   {
@@ -392,7 +350,7 @@
     "port": "k3"
    },
    "to": {
-    "module": 8,
+    "module": 4,
     "port": "p1"
    }
   },

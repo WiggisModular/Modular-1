@@ -1,24 +1,24 @@
 {
  "version": 2,
- "name": "PWM Pad",
+ "name": "S&H Bleeps",
  "modules": [
   {
    "id": 1,
    "type": "fm1",
-   "x": 26,
-   "y": 26,
+   "x": 15,
+   "y": 23,
    "params": {
-    "k1": 0.08,
-    "k2": 1,
-    "k3": 0.3994,
-    "k4": 0.5
+    "k1": 0.1496,
+    "k2": 0.5438,
+    "k3": 0.0238,
+    "k4": 0.3
    }
   },
   {
    "id": 2,
    "type": "osc",
-   "x": 299,
-   "y": 26,
+   "x": 193,
+   "y": 23,
    "params": {
     "wave": 3,
     "pw": 0.5,
@@ -55,15 +55,18 @@
   {
    "id": 3,
    "type": "lfo",
-   "x": 299,
-   "y": 546,
+   "x": 400,
+   "y": 23,
    "params": {
-    "wave": 0,
+    "wave": 4,
     "rate": 0.02,
-    "depth": 0
+    "depth": 1,
+    "sync": 0,
+    "div": 6,
+    "bpm": 120
    },
    "att": [
-    0.15,
+    1,
     1
    ],
    "map": {
@@ -71,7 +74,7 @@
      "rate"
     ],
     "p2": [
-     "depth"
+     "rate"
     ],
     "k1": [
      "wave"
@@ -82,27 +85,59 @@
     "k3": [
      "depth"
     ],
-    "k4": []
+    "k4": [
+     "sync"
+    ]
    }
   },
   {
    "id": 4,
-   "type": "adsr",
-   "x": 572,
-   "y": 546,
+   "type": "scale",
+   "x": 400,
+   "y": 302,
    "params": {
-    "a": 0.001,
-    "d": 1,
-    "s": 0.9,
-    "r": 1.2
+    "gain": -4,
+    "offset": 0
    },
    "att": [
-    0.3,
+    1,
     1
    ],
    "map": {
     "p1": [
-     "a"
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [
+     "gain"
+    ],
+    "k2": [
+     "offset"
+    ],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 5,
+   "type": "adsr",
+   "x": 816,
+   "y": 23,
+   "params": {
+    "a": 0.001,
+    "d": 0.001,
+    "s": 0.3,
+    "r": 0.1
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "d"
     ],
     "p2": [
      "d"
@@ -122,15 +157,15 @@
    }
   },
   {
-   "id": 5,
+   "id": 6,
    "type": "vca",
-   "x": 572,
-   "y": 26,
+   "x": 816,
+   "y": 237,
    "params": {
-    "gain": 0.5
+    "gain": 1.19
    },
    "att": [
-    0.5,
+    1,
     1
    ],
    "map": {
@@ -147,46 +182,53 @@
    }
   },
   {
-   "id": 6,
-   "type": "output",
-   "x": 1118,
-   "y": 26,
+   "id": 7,
+   "type": "delay",
+   "x": 1024,
+   "y": 23,
    "params": {
-    "level": 0.7
+    "time": 190,
+    "fb": 0.45,
+    "mix": 0,
+    "sync": 0,
+    "pingpong": 1
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "mix"
+    ],
+    "p2": [
+     "fb"
+    ],
+    "k1": [
+     "time"
+    ],
+    "k2": [
+     "fb"
+    ],
+    "k3": [
+     "mix"
+    ],
+    "k4": [
+     "sync"
+    ]
+   }
+  },
+  {
+   "id": 8,
+   "type": "output",
+   "x": 1232,
+   "y": 23,
+   "params": {
+    "level": 1
    }
   }
  ],
  "cables": [
-  {
-   "from": {
-    "module": 1,
-    "port": "gate"
-   },
-   "to": {
-    "module": 4,
-    "port": "gate"
-   }
-  },
-  {
-   "from": {
-    "module": 2,
-    "port": "out"
-   },
-   "to": {
-    "module": 5,
-    "port": "in"
-   }
-  },
-  {
-   "from": {
-    "module": 4,
-    "port": "env"
-   },
-   "to": {
-    "module": 5,
-    "port": "cv"
-   }
-  },
   {
    "from": {
     "module": 1,
@@ -203,17 +245,67 @@
     "port": "out"
    },
    "to": {
+    "module": 4,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 4,
+    "port": "out"
+   },
+   "to": {
     "module": 2,
-    "port": "p2"
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "gate"
+   },
+   "to": {
+    "module": 5,
+    "port": "gate"
+   }
+  },
+  {
+   "from": {
+    "module": 2,
+    "port": "out"
+   },
+   "to": {
+    "module": 6,
+    "port": "in"
    }
   },
   {
    "from": {
     "module": 5,
-    "port": "out"
+    "port": "env"
    },
    "to": {
     "module": 6,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 6,
+    "port": "out"
+   },
+   "to": {
+    "module": 7,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 7,
+    "port": "out"
+   },
+   "to": {
+    "module": 8,
     "port": "l"
    }
   },
@@ -233,8 +325,8 @@
     "port": "k2"
    },
    "to": {
-    "module": 3,
-    "port": "p2"
+    "module": 4,
+    "port": "p1"
    }
   },
   {
@@ -243,7 +335,7 @@
     "port": "k3"
    },
    "to": {
-    "module": 4,
+    "module": 5,
     "port": "p1"
    }
   },
@@ -253,7 +345,7 @@
     "port": "k4"
    },
    "to": {
-    "module": 5,
+    "module": 7,
     "port": "p1"
    }
   }

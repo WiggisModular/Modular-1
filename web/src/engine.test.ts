@@ -3,9 +3,43 @@ import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, disconnect, emptyPatch, fromUnit, modulate, morphText, processingOrder, removeModule, toUnit, validatePatch } from './patch';
-import { PRESETS } from './presets';
+import { make, PRESETS } from './presets';
 
 const SR = 48000;
+
+/** a plain subtractive voice, not a factory preset (those change): panel, saw, envelope, filter, VCA, output (module 1 is the oscillator) */
+const testSaw = () =>
+  make('test saw', (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const o = add('osc', 0, 0, { wave: 2, level: 0.8 });
+    const env = add('adsr', 0, 0, { a: 0.01, d: 0.2, s: 0.7, r: 0.2 });
+    const f = add('filter', 0, 0, { cutoff: 3000, res: 0.1 });
+    const v = add('vca', 0, 0);
+    const out = add('output', 0, 0);
+    wire(kb, 'pitch', o, 'pitch');
+    wire(kb, 'gate', env, 'gate');
+    wire(o, 'out', f, 'in');
+    wire(f, 'lp12', v, 'in');
+    wire(env, 'env', v, 'cv');
+    wire(v, 'out', out, 'l');
+  });
+/** two sine operators: the modulator phase-modulates the carrier */
+const testFm = () =>
+  make('test fm', (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const mod = add('osc', 0, 0, { wave: 0, coarse: 12, level: 0.8 });
+    const car = add('osc', 0, 0, { wave: 0, pm: 3, level: 0.8 });
+    const env = add('adsr', 0, 0, { a: 0.01, d: 0.3, s: 0.7, r: 0.2 });
+    const v = add('vca', 0, 0);
+    const out = add('output', 0, 0);
+    wire(kb, 'pitch', mod, 'pitch');
+    wire(kb, 'pitch', car, 'pitch');
+    wire(kb, 'gate', env, 'gate');
+    wire(mod, 'out', car, 'pm');
+    wire(car, 'out', v, 'in');
+    wire(env, 'env', v, 'cv');
+    wire(v, 'out', out, 'l');
+  });
 
 function render(e: Engine, frames: number): { l: Float32Array; r: Float32Array } {
   const l = new Float32Array(frames);
@@ -57,7 +91,7 @@ describe('patch model', () => {
 
   it('validates JSON patches', () => {
     expect(() => validatePatch({ version: 2 }, DEFS)).toThrow();
-    const p = PRESETS['Subtractive saw']();
+    const p = testSaw();
     expect(validatePatch(JSON.parse(JSON.stringify(p)), DEFS).modules).toHaveLength(p.modules.length);
     const bad = JSON.parse(JSON.stringify(p));
     bad.cables[0].to.port = 'ghost';
@@ -92,7 +126,7 @@ describe('engine', () => {
 
   it('applies the ADSR: silent before the note, sounding while held, decaying after release', () => {
     const e = new Engine(SR);
-    e.load(PRESETS['Subtractive saw']());
+    e.load(testSaw());
     expect(rms(render(e, 4800).l)).toBeLessThan(1e-4);
     e.noteOn(48);
     expect(rms(render(e, 9600).l)).toBeGreaterThan(0.02);
@@ -153,6 +187,67 @@ describe('engine', () => {
     expect(morphText(DEFS.osc.params[0].choices!, 1.4)).toBe('triangle > saw 40%');
     expect(morphText(DEFS.osc.params[0].choices!, 2)).toBe('saw');
     expect(morphText(DEFS.osc.params[0].choices!, 2.98)).toBe('square');
+  });
+
+  describe('chip oscillator', () => {
+    const chipOut = (params: Record<string, number>, frames = 4096): Float32Array => {
+      const p = emptyPatch();
+      const kb = addModule(p, DEFS.fm1, 0, 0);
+      const c = addModule(p, DEFS.chip, 0, 0);
+      Object.assign(c.params, { level: 1 }, params);
+      const out = addModule(p, DEFS.output, 0, 0);
+      connect(p, DEFS, { module: kb.id, port: 'pitch' }, { module: c.id, port: 'pitch' });
+      connect(p, DEFS, { module: c.id, port: 'out' }, { module: out.id, port: 'l' });
+      const e = new Engine(SR);
+      e.load(p);
+      return render(e, frames).l;
+    };
+    const distinct = (a: Float32Array): number => new Set(Array.from(a, (v) => Math.round(v * 1e4))).size;
+
+    it('the pulse widths are 12.5, 25, 50 and 75 percent', () => {
+      [0.125, 0.25, 0.5, 0.75].forEach((duty, shape) => {
+        const a = chipOut({ shape }, 48000);
+        const high = a.filter((v) => v > 0).length / a.length;
+        expect(high, `shape ${shape}`).toBeCloseTo(duty, 1);
+        expect(new Set(a).size).toBe(2); // only two levels: no band limiting
+      });
+    });
+
+    it('the NES triangle and the Game Boy wave are 4 bit: at most 16 levels, and they differ', () => {
+      const tri = chipOut({ chip: 0, shape: 4 });
+      const wave = chipOut({ chip: 1, shape: 4 });
+      expect(distinct(tri)).toBeLessThanOrEqual(16);
+      expect(distinct(tri)).toBeGreaterThan(8);
+      expect(distinct(wave)).toBeLessThanOrEqual(16);
+      expect(distinct(wave)).toBeGreaterThan(8);
+      expect(tri).not.toEqual(wave);
+    });
+
+    it('the noise is a bit stream that depends on the chip and the mode, and is repeatable', () => {
+      const a = chipOut({ shape: 5, chip: 0 });
+      expect(new Set(a).size).toBe(2);
+      expect(chipOut({ shape: 5, chip: 0 })).toEqual(a);
+      expect(chipOut({ shape: 6, chip: 0 })).not.toEqual(a);
+      expect(chipOut({ shape: 6, chip: 1 })).not.toEqual(chipOut({ shape: 6, chip: 0 }));
+      const mean = a.reduce((s, v) => s + v, 0) / a.length;
+      expect(Math.abs(mean)).toBeLessThan(0.15);
+    });
+
+    it('the arpeggio cycles the chord one note per 1/speed second, without glide', () => {
+      const speed = 20; // slow enough to count the cycles of a step
+      const a = chipOut({ shape: 2, arp: 1, chord: 1, speed }, SR / 2);
+      const win = Math.round(SR / speed); // one step
+      const f = (k: number): number => freq(a.subarray(k * win + 8, (k + 1) * win - 8)) * (win / (win - 16));
+      const base = f(0);
+      expect(base).toBeGreaterThan(200);
+      const ratios = [0, 1, 2, 3, 4, 5].map((k) => f(k) / base);
+      const want = [1, 2 ** (4 / 12), 2 ** (7 / 12), 1, 2 ** (4 / 12), 2 ** (7 / 12)];
+      ratios.forEach((r, k) => expect(r, `step ${k}`).toBeGreaterThan(want[k] * 0.9));
+      ratios.forEach((r, k) => expect(r, `step ${k}`).toBeLessThan(want[k] * 1.1));
+      // without the switch the pitch stays
+      const still = chipOut({ shape: 2, arp: 0 }, SR / 4);
+      expect(freq(still.subarray(0, win))).toBeCloseTo(freq(still.subarray(2 * win, 3 * win)), -1);
+    });
   });
 
   it('every module but fm1 and output has the two parameter inputs and a matrix', () => {
@@ -258,7 +353,7 @@ describe('engine', () => {
 
   it('keeps running state when the patch is edited, but not output order assumptions', () => {
     const e = new Engine(SR);
-    const p = PRESETS['Subtractive saw']();
+    const p = testSaw();
     e.load(p);
     e.noteOn(48);
     render(e, 4800);
@@ -271,7 +366,7 @@ describe('engine', () => {
 
   it('FM changes the spectrum compared to the unmodulated carrier', () => {
     const e = new Engine(SR);
-    const p = PRESETS['Two-operator FM']();
+    const p = testFm();
     e.load(p);
     e.noteOn(60);
     const a = render(e, 8000).l;
@@ -287,7 +382,7 @@ describe('engine', () => {
 
   it('survives a feedback cable without NaNs', () => {
     const e = new Engine(SR);
-    const p = PRESETS['Subtractive saw']();
+    const p = testSaw();
     const vca = p.modules.find((m) => m.type === 'vca')!;
     const osc = p.modules.find((m) => m.type === 'osc')!;
     connect(p, DEFS, { module: vca.id, port: 'out' }, { module: osc.id, port: 'pm' });

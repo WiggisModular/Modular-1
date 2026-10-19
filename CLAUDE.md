@@ -167,3 +167,16 @@ SysEx over USB MIDI. The device *pulls* blocks: it sends read requests (cmd 0x30
 ## Oscillator morph (host-tested, golden pass incl. a morph patch; not flashed)
 
 - `osc.wave` is a position 0..3 (sine, triangle, saw, square), step 0.05, `ParamDef.morph`; whole numbers = the pure shapes (old patches unchanged, binary format unchanged), between = linear crossfade of the two neighbours (`m_osc` in engine.c, `osc.process` in modules.ts); a cable on `wave` (p1 by default) sweeps it. Display: `morphText` (web), `put_param` with `pmorph` (generated `defs.h`: `<T>_MORPH`, last field of `def_t`) on the LCD (`SIN>TRI 40%`). Golden patch `osc-morph` (web/scripts/golden.ts), vitest 'the oscillator morphs...'. LFO wave stays a choice. Pulse width still only shapes the square.
+
+## Chip oscillator (host-tested, golden pass; not flashed)
+
+- Module `chip` ("Chip osc", appended after `output`: type index 13, nothing moved, patch format unchanged): `web/src/modules.ts` (`CHIP_CHIPS`, `CHIP_SHAPES`, `CHIP_CHORDS`, `CHIP_GB_WAVE`, `CHIP_NOISE_MUL`) and `m_chip` in engine.c (tables via `export-defs.ts` -> `defs.h`). NES / GB, pulse 12.5/25/50/75 %, NES triangle or GB 4-bit wave, 15-bit LFSR noise (short = NES tap 6 / GB 7-bit mode), `arp` switch + `chord` + `speed` for the fast chip arpeggio, `coarse` / `fine` / `level`. Hard-edged (not band-limited) on purpose; both engines use the same integer steps. The golden `chip-*` patches are held to 10 % rms (edges land on another sample now and then) instead of 5 % (`tools/golden.sh`).
+- The chip presets are part of the new factory set (see "Factory patches" below).
+- Switch parameters (`ParamDef.toggle`: arp, delay sync / ping-pong, filter track) now show OFF / ON on the LCD (`export-defs.ts` gives them the choice names).
+
+## Factory patches (a new set; host-tested, golden pass; not flashed)
+
+- `web/presets/NN-name.json` (32 = the bank's slots, the order the firmware compiles into `presets.h`) are **generated** by `web/scripts/make-presets.ts` (`cd web && npx vite-node scripts/make-presets.ts && npm run export-defs`; it deletes and rewrites all the JSON files): leads, basses, pads, plucks / keys, effects, and four chip patches; no drum patches (the drum machine is voice 3), no preset called "FM-1 panel ...". Every patch is sources -> mixer -> filter -> VCA with ADSR -> delay -> reverb -> output plus its special parts (LFO, pitch envelope, phase modulation, ...). `B.knobs()` routes K1..K4 (K1 filter cutoff when there is a filter, K3 reverb mix, K4 delay mix, else the first candidate that fits; a patch can ask for others); the output level (and, if that is not enough, the VCA gain) is set so every patch peaks at 0.5 for a held C3 and its tail.
+- Slot 0 is `303 Acid` (the docs and `m1_link.py upload build/golden/303-acid.m1p` use it), slot 1 `Bright Saw` is voice 2's start patch and the web editor's, `Pluck` has its cutoff at 300 Hz (a test depends on it). Tests no longer depend on the other factory patches: `engine.test.ts` has its own `testSaw` / `testFm`.
+- A pitch sweep on a hard-edged square does not match the reference engine within 5 % (edges drift apart): `Zap` is a triangle for that reason.
+

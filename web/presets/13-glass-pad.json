@@ -1,26 +1,26 @@
 {
  "version": 2,
- "name": "Pluck",
+ "name": "Glass Pad",
  "modules": [
   {
    "id": 1,
    "type": "fm1",
-   "x": 26,
-   "y": 26,
+   "x": 15,
+   "y": 23,
    "params": {
-    "k1": 0.7149,
-    "k2": 0.5,
-    "k3": 0.179,
-    "k4": 0.25
+    "k1": 0.9725,
+    "k2": 0.1,
+    "k3": 0.45,
+    "k4": 0.1798
    }
   },
   {
    "id": 2,
    "type": "osc",
-   "x": 299,
-   "y": 26,
+   "x": 193,
+   "y": 23,
    "params": {
-    "wave": 2,
+    "wave": 1,
     "pw": 0.5,
     "coarse": 0,
     "fine": 0,
@@ -54,55 +54,131 @@
   },
   {
    "id": 3,
-   "type": "adsr",
-   "x": 572,
-   "y": 546,
+   "type": "osc",
+   "x": 193,
+   "y": 302,
    "params": {
-    "a": 0.001,
-    "d": 0.001,
-    "s": 0,
-    "r": 0.1
+    "wave": 0,
+    "pw": 0.5,
+    "coarse": 12,
+    "fine": 5,
+    "pm": 0,
+    "level": 0.7
    },
    "att": [
-    0.2,
+    1,
     1
    ],
    "map": {
     "p1": [
-     "d"
+     "wave"
     ],
     "p2": [
-     "d"
+     "pw"
     ],
     "k1": [
-     "a"
+     "wave"
     ],
     "k2": [
-     "d"
+     "pw"
     ],
     "k3": [
-     "s"
+     "coarse"
     ],
     "k4": [
-     "r"
+     "fine"
     ]
    }
   },
   {
    "id": 4,
+   "type": "osc",
+   "x": 193,
+   "y": 581,
+   "params": {
+    "wave": 0,
+    "pw": 0.5,
+    "coarse": 19,
+    "fine": 0,
+    "pm": 0,
+    "level": 0.5
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "wave"
+    ],
+    "p2": [
+     "pw"
+    ],
+    "k1": [
+     "wave"
+    ],
+    "k2": [
+     "pw"
+    ],
+    "k3": [
+     "coarse"
+    ],
+    "k4": [
+     "fine"
+    ]
+   }
+  },
+  {
+   "id": 5,
+   "type": "mixer",
+   "x": 400,
+   "y": 23,
+   "params": {
+    "l1": 0.4,
+    "l2": 0.35,
+    "l3": 0.25,
+    "l4": 0.7
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "l1"
+    ],
+    "p2": [
+     "l2"
+    ],
+    "k1": [
+     "l1"
+    ],
+    "k2": [
+     "l2"
+    ],
+    "k3": [
+     "l3"
+    ],
+    "k4": [
+     "l4"
+    ]
+   }
+  },
+  {
+   "id": 6,
    "type": "filter",
-   "x": 572,
-   "y": 26,
+   "x": 608,
+   "y": 23,
    "params": {
     "cutoff": 20,
     "res": 0,
-    "cvamt": 3,
+    "cvamt": 0.4,
     "track": 0,
     "morph": 0
    },
    "att": [
     1,
-    0.6
+    1
    ],
    "map": {
     "p1": [
@@ -126,15 +202,53 @@
    }
   },
   {
-   "id": 5,
+   "id": 7,
+   "type": "lfo",
+   "x": 400,
+   "y": 237,
+   "params": {
+    "wave": 0,
+    "rate": 0.15,
+    "depth": 0.3,
+    "sync": 0,
+    "div": 6,
+    "bpm": 120
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "wave"
+    ],
+    "p2": [
+     "rate"
+    ],
+    "k1": [
+     "wave"
+    ],
+    "k2": [
+     "rate"
+    ],
+    "k3": [
+     "depth"
+    ],
+    "k4": [
+     "sync"
+    ]
+   }
+  },
+  {
+   "id": 8,
    "type": "adsr",
-   "x": 845,
-   "y": 546,
+   "x": 816,
+   "y": 23,
    "params": {
     "a": 0.001,
-    "d": 0.35,
-    "s": 0,
-    "r": 0.2
+    "d": 0.5,
+    "s": 0.8,
+    "r": 1.8
    },
    "att": [
     1,
@@ -162,12 +276,12 @@
    }
   },
   {
-   "id": 6,
+   "id": 9,
    "type": "vca",
-   "x": 845,
-   "y": 26,
+   "x": 816,
+   "y": 237,
    "params": {
-    "gain": 1
+    "gain": 1.16
    },
    "att": [
     1,
@@ -187,13 +301,13 @@
    }
   },
   {
-   "id": 7,
-   "type": "delay",
-   "x": 1118,
-   "y": 26,
+   "id": 10,
+   "type": "reverb",
+   "x": 1024,
+   "y": 23,
    "params": {
-    "time": 300,
-    "fb": 0.35,
+    "size": 0.9,
+    "damp": 0.25,
     "mix": 0
    },
    "att": [
@@ -205,13 +319,13 @@
      "mix"
     ],
     "p2": [
-     "fb"
+     "damp"
     ],
     "k1": [
-     "time"
+     "size"
     ],
     "k2": [
-     "fb"
+     "damp"
     ],
     "k3": [
      "mix"
@@ -220,12 +334,12 @@
    }
   },
   {
-   "id": 8,
+   "id": 11,
    "type": "output",
-   "x": 1391,
-   "y": 26,
+   "x": 1232,
+   "y": 23,
    "params": {
-    "level": 0.7
+    "level": 1
    }
   }
  ],
@@ -233,36 +347,6 @@
   {
    "from": {
     "module": 1,
-    "port": "gate"
-   },
-   "to": {
-    "module": 5,
-    "port": "gate"
-   }
-  },
-  {
-   "from": {
-    "module": 4,
-    "port": "lp12"
-   },
-   "to": {
-    "module": 6,
-    "port": "in"
-   }
-  },
-  {
-   "from": {
-    "module": 5,
-    "port": "env"
-   },
-   "to": {
-    "module": 6,
-    "port": "cv"
-   }
-  },
-  {
-   "from": {
-    "module": 1,
     "port": "pitch"
    },
    "to": {
@@ -273,11 +357,21 @@
   {
    "from": {
     "module": 1,
-    "port": "gate"
+    "port": "pitch"
    },
    "to": {
     "module": 3,
-    "port": "gate"
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "pitch"
+   },
+   "to": {
+    "module": 4,
+    "port": "pitch"
    }
   },
   {
@@ -286,27 +380,37 @@
     "port": "out"
    },
    "to": {
-    "module": 4,
-    "port": "in"
+    "module": 5,
+    "port": "in1"
    }
   },
   {
    "from": {
     "module": 3,
-    "port": "env"
+    "port": "out"
    },
    "to": {
-    "module": 4,
-    "port": "cv"
+    "module": 5,
+    "port": "in2"
    }
   },
   {
    "from": {
-    "module": 6,
+    "module": 4,
     "port": "out"
    },
    "to": {
-    "module": 7,
+    "module": 5,
+    "port": "in3"
+   }
+  },
+  {
+   "from": {
+    "module": 5,
+    "port": "out"
+   },
+   "to": {
+    "module": 6,
     "port": "in"
    }
   },
@@ -314,9 +418,59 @@
    "from": {
     "module": 7,
     "port": "out"
+   },
+   "to": {
+    "module": 6,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "gate"
    },
    "to": {
     "module": 8,
+    "port": "gate"
+   }
+  },
+  {
+   "from": {
+    "module": 6,
+    "port": "lp12"
+   },
+   "to": {
+    "module": 9,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 8,
+    "port": "env"
+   },
+   "to": {
+    "module": 9,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 9,
+    "port": "out"
+   },
+   "to": {
+    "module": 10,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 10,
+    "port": "out"
+   },
+   "to": {
+    "module": 11,
     "port": "l"
    }
   },
@@ -326,7 +480,7 @@
     "port": "k1"
    },
    "to": {
-    "module": 4,
+    "module": 6,
     "port": "p1"
    }
   },
@@ -336,7 +490,7 @@
     "port": "k2"
    },
    "to": {
-    "module": 4,
+    "module": 6,
     "port": "p2"
    }
   },
@@ -346,7 +500,7 @@
     "port": "k3"
    },
    "to": {
-    "module": 3,
+    "module": 10,
     "port": "p1"
    }
   },
@@ -356,7 +510,7 @@
     "port": "k4"
    },
    "to": {
-    "module": 7,
+    "module": 8,
     "port": "p1"
    }
   }

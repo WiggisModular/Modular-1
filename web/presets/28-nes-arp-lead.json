@@ -1,26 +1,33 @@
 {
  "version": 2,
- "name": "Hi-hat",
+ "name": "NES Arp Lead",
  "modules": [
   {
    "id": 1,
    "type": "fm1",
-   "x": 26,
-   "y": 26,
+   "x": 15,
+   "y": 23,
    "params": {
-    "k1": 1,
-    "k2": 0.3333,
-    "k3": 0.118,
-    "k4": 0.5
+    "k1": 0.1667,
+    "k2": 0.1111,
+    "k3": 0.0298,
+    "k4": 0.0099
    }
   },
   {
    "id": 2,
-   "type": "noise",
-   "x": 299,
-   "y": 26,
+   "type": "chip",
+   "x": 193,
+   "y": 23,
    "params": {
-    "level": 0.8
+    "chip": 0,
+    "shape": 0,
+    "arp": 1,
+    "chord": 0,
+    "speed": 60,
+    "coarse": 0,
+    "fine": 0,
+    "level": 0.7
    },
    "att": [
     1,
@@ -28,67 +35,38 @@
    ],
    "map": {
     "p1": [
-     "level"
-    ],
-    "p2": [],
-    "k1": [
-     "level"
-    ],
-    "k2": [],
-    "k3": [],
-    "k4": []
-   }
-  },
-  {
-   "id": 3,
-   "type": "filter",
-   "x": 572,
-   "y": 26,
-   "params": {
-    "cutoff": 20,
-    "res": 0,
-    "cvamt": 1,
-    "track": 0,
-    "morph": 0
-   },
-   "att": [
-    1,
-    0.6
-   ],
-   "map": {
-    "p1": [
-     "cutoff"
+     "shape"
     ],
     "p2": [
-     "res"
+     "chord"
     ],
     "k1": [
-     "cutoff"
+     "chip"
     ],
     "k2": [
-     "res"
+     "shape"
     ],
     "k3": [
-     "cvamt"
+     "arp"
     ],
     "k4": [
-     "track"
+     "chord"
     ]
    }
   },
   {
-   "id": 4,
+   "id": 3,
    "type": "adsr",
-   "x": 845,
-   "y": 546,
+   "x": 816,
+   "y": 23,
    "params": {
-    "a": 0.001,
+    "a": 0.003,
     "d": 0.001,
-    "s": 0,
-    "r": 0.05
+    "s": 0.6,
+    "r": 0.001
    },
    "att": [
-    0.1,
+    1,
     1
    ],
    "map": {
@@ -96,7 +74,7 @@
      "d"
     ],
     "p2": [
-     "d"
+     "r"
     ],
     "k1": [
      "a"
@@ -113,15 +91,15 @@
    }
   },
   {
-   "id": 5,
+   "id": 4,
    "type": "vca",
-   "x": 845,
-   "y": 26,
+   "x": 816,
+   "y": 237,
    "params": {
-    "gain": 0.5
+    "gain": 1
    },
    "att": [
-    0.5,
+    1,
     1
    ],
    "map": {
@@ -138,12 +116,12 @@
    }
   },
   {
-   "id": 6,
+   "id": 5,
    "type": "output",
-   "x": 1391,
-   "y": 26,
+   "x": 1232,
+   "y": 23,
    "params": {
-    "level": 0.7
+    "level": 0.71
    }
   }
  ],
@@ -151,31 +129,21 @@
   {
    "from": {
     "module": 1,
-    "port": "gate"
+    "port": "pitch"
    },
    "to": {
-    "module": 4,
-    "port": "gate"
+    "module": 2,
+    "port": "pitch"
    }
   },
   {
    "from": {
+    "module": 1,
+    "port": "gate"
+   },
+   "to": {
     "module": 3,
-    "port": "hp"
-   },
-   "to": {
-    "module": 5,
-    "port": "in"
-   }
-  },
-  {
-   "from": {
-    "module": 4,
-    "port": "env"
-   },
-   "to": {
-    "module": 5,
-    "port": "cv"
+    "port": "gate"
    }
   },
   {
@@ -184,17 +152,27 @@
     "port": "out"
    },
    "to": {
-    "module": 3,
+    "module": 4,
     "port": "in"
    }
   },
   {
    "from": {
-    "module": 5,
+    "module": 3,
+    "port": "env"
+   },
+   "to": {
+    "module": 4,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 4,
     "port": "out"
    },
    "to": {
-    "module": 6,
+    "module": 5,
     "port": "l"
    }
   },
@@ -204,7 +182,7 @@
     "port": "k1"
    },
    "to": {
-    "module": 3,
+    "module": 2,
     "port": "p1"
    }
   },
@@ -214,7 +192,7 @@
     "port": "k2"
    },
    "to": {
-    "module": 3,
+    "module": 2,
     "port": "p2"
    }
   },
@@ -224,7 +202,7 @@
     "port": "k3"
    },
    "to": {
-    "module": 4,
+    "module": 3,
     "port": "p1"
    }
   },
@@ -234,8 +212,8 @@
     "port": "k4"
    },
    "to": {
-    "module": 5,
-    "port": "p1"
+    "module": 3,
+    "port": "p2"
    }
   }
  ]

@@ -1,31 +1,33 @@
 {
  "version": 2,
- "name": "Subtractive saw",
+ "name": "NES Triangle Bass",
  "modules": [
   {
    "id": 1,
    "type": "fm1",
-   "x": 26,
-   "y": 52,
+   "x": 15,
+   "y": 23,
    "params": {
-    "k1": 0.8012,
-    "k2": 0.5,
-    "k3": 0.1663,
+    "k1": 0,
+    "k2": 0.0398,
+    "k3": 0.0061,
     "k4": 0.5
    }
   },
   {
    "id": 2,
-   "type": "osc",
-   "x": 286,
-   "y": 26,
+   "type": "chip",
+   "x": 193,
+   "y": 23,
    "params": {
-    "wave": 2,
-    "pw": 0.5,
-    "coarse": 0,
+    "chip": 0,
+    "shape": 4,
+    "arp": 0,
+    "chord": 1,
+    "speed": 60,
+    "coarse": -12,
     "fine": 0,
-    "pm": 0,
-    "level": 0.8
+    "level": 0.9
    },
    "att": [
     1,
@@ -33,43 +35,43 @@
    ],
    "map": {
     "p1": [
-     "wave"
+     "chip"
     ],
     "p2": [
-     "pw"
+     "shape"
     ],
     "k1": [
-     "wave"
+     "chip"
     ],
     "k2": [
-     "pw"
+     "shape"
     ],
     "k3": [
-     "coarse"
+     "arp"
     ],
     "k4": [
-     "fine"
+     "chord"
     ]
    }
   },
   {
    "id": 3,
    "type": "adsr",
-   "x": 286,
-   "y": 559,
+   "x": 816,
+   "y": 23,
    "params": {
-    "a": 0.01,
-    "d": 0.3,
-    "s": 0.5,
+    "a": 0.002,
+    "d": 0.001,
+    "s": 0.8,
     "r": 0.001
    },
    "att": [
-    0.3,
+    1,
     1
    ],
    "map": {
     "p1": [
-     "a"
+     "d"
     ],
     "p2": [
      "r"
@@ -90,51 +92,14 @@
   },
   {
    "id": 4,
-   "type": "filter",
-   "x": 572,
-   "y": 26,
+   "type": "vca",
+   "x": 816,
+   "y": 237,
    "params": {
-    "cutoff": 20,
-    "res": 0.15,
-    "cvamt": 2,
-    "track": 0,
-    "morph": 0
+    "gain": 0
    },
    "att": [
     1,
-    0.6
-   ],
-   "map": {
-    "p1": [
-     "cutoff"
-    ],
-    "p2": [
-     "res"
-    ],
-    "k1": [
-     "cutoff"
-    ],
-    "k2": [
-     "res"
-    ],
-    "k3": [
-     "cvamt"
-    ],
-    "k4": [
-     "track"
-    ]
-   }
-  },
-  {
-   "id": 5,
-   "type": "vca",
-   "x": 858,
-   "y": 26,
-   "params": {
-    "gain": 0.5
-   },
-   "att": [
-    0.5,
     1
    ],
    "map": {
@@ -151,12 +116,12 @@
    }
   },
   {
-   "id": 6,
+   "id": 5,
    "type": "output",
-   "x": 1118,
-   "y": 52,
+   "x": 1232,
+   "y": 23,
    "params": {
-    "level": 0.7
+    "level": 0.57
    }
   }
  ],
@@ -173,6 +138,16 @@
   },
   {
    "from": {
+    "module": 1,
+    "port": "gate"
+   },
+   "to": {
+    "module": 3,
+    "port": "gate"
+   }
+  },
+  {
+   "from": {
     "module": 2,
     "port": "out"
    },
@@ -183,16 +158,6 @@
   },
   {
    "from": {
-    "module": 1,
-    "port": "gate"
-   },
-   "to": {
-    "module": 3,
-    "port": "gate"
-   }
-  },
-  {
-   "from": {
     "module": 3,
     "port": "env"
    },
@@ -204,30 +169,10 @@
   {
    "from": {
     "module": 4,
-    "port": "mix"
-   },
-   "to": {
-    "module": 5,
-    "port": "in"
-   }
-  },
-  {
-   "from": {
-    "module": 3,
-    "port": "env"
-   },
-   "to": {
-    "module": 5,
-    "port": "cv"
-   }
-  },
-  {
-   "from": {
-    "module": 5,
     "port": "out"
    },
    "to": {
-    "module": 6,
+    "module": 5,
     "port": "l"
    }
   },
@@ -237,7 +182,7 @@
     "port": "k1"
    },
    "to": {
-    "module": 4,
+    "module": 2,
     "port": "p1"
    }
   },
@@ -247,8 +192,8 @@
     "port": "k2"
    },
    "to": {
-    "module": 4,
-    "port": "morph"
+    "module": 3,
+    "port": "p1"
    }
   },
   {
@@ -258,7 +203,7 @@
    },
    "to": {
     "module": 3,
-    "port": "p1"
+    "port": "p2"
    }
   },
   {
@@ -267,8 +212,8 @@
     "port": "k4"
    },
    "to": {
-    "module": 3,
-    "port": "p2"
+    "module": 4,
+    "port": "p1"
    }
   }
  ]
