@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Arpeggiator modes (K1 on the MELODY page, appended after RANDOM so stored states keep their mode): **DOUBLE** (up and down, every note twice), **WAVE** (overlapping triples 1 2 1, 2 3 2, 3 4 3 ... up, then the mirror image down), **JUMPS** (1 n 2 n-1 3 n-2 ... to the middle and back, the turning notes once).
+
+### Not verified
+- Host-tested only (`tools/arp_test.sh`); not flashed, the mode names are not seen on the display.
+
 ## 1.0.3 (firmware `M1-1.0.3`, app 1.0.3)
 
 ### Fixed

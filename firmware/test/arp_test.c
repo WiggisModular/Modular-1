@@ -120,6 +120,19 @@ int main(void)
             CHECK(notes[i] == want[i], "WAVE %d = %d want %d", i, notes[i], want[i]);
     }
 
+    /* JUMPS: 1 n 2 n-1 3 ... and back: 8 notes */
+    reset();
+    arp_c.mode = ARP_JUMPS;
+    arp_c.scale = 47;                   /* Major 7th has 4 notes: 0 4 7 11 */
+    arp_c.octaves = 2;                  /* 8 notes */
+    arp_play = 1;
+    run_blocks(43 * 16 + 5);
+    {
+        static const int want[] = {0, 7, 1, 6, 2, 5, 3, 4, 3, 5, 2, 6, 1, 7, 0, 7};   /* pool indices */
+        for (i = 0; i < 16; i++)
+            CHECK(notes[i] == AR.pool[want[i]], "JUMPS %d = %d want %d", i, notes[i], AR.pool[want[i]]);
+    }
+
     /* octaves: 3 octaves of a triad, UP */
     reset();
     arp_c.scale = 40;
