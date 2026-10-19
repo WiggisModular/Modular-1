@@ -39,6 +39,34 @@ kit('waves', (add, wire) => {
   });
   wire(mix, 'out', out, 'l');
 });
+const chipKit = (name: string, voices: Record<string, number>[]): void =>
+  kit(name, (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const mix = add('mixer', 0, 0, { l1: 0.4, l2: 0.4, l3: 0.4, l4: 0.4 });
+    const out = add('output', 0, 0);
+    voices.forEach((v, i) => {
+      const c = add('chip', 0, 0, v);
+      wire(kb, 'pitch', c, 'pitch');
+      wire(c, 'out', mix, `in${i + 1}`);
+    });
+    wire(mix, 'out', out, 'l');
+  });
+chipKit('chip-pulse-arp', [
+  { chip: 0, shape: 1, arp: 1, chord: 1, speed: 60 },
+  { chip: 1, shape: 2, arp: 1, chord: 7, speed: 30, coarse: -12, level: 0.5 },
+]);
+chipKit('chip-tri-wave', [
+  { chip: 0, shape: 4, arp: 0, coarse: -12 },
+  { chip: 1, shape: 4, arp: 1, chord: 3, speed: 45, coarse: 7 },
+  { chip: 0, shape: 0, arp: 0, coarse: 12, level: 0.3 },
+  { chip: 1, shape: 3, arp: 0, coarse: 5, level: 0.3 },
+]);
+chipKit('chip-noise', [
+  { chip: 0, shape: 5, coarse: -24, level: 0.6 },
+  { chip: 0, shape: 6, coarse: -12, level: 0.5 },
+  { chip: 1, shape: 5, coarse: -30, level: 0.5 },
+  { chip: 1, shape: 6, coarse: -18, level: 0.5 },
+]);
 kit('lfo-sh', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const sh = add('lfo', 0, 0, { wave: 4, rate: 9, depth: 0.8 });

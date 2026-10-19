@@ -163,3 +163,10 @@ SysEx over USB MIDI. The device *pulls* blocks: it sends read requests (cmd 0x30
 - The settings menu has a fifth tab MANUAL (`menu.c`, text in `manual.c`): controls, MIDI mapping, editor link, memory limits, one scrollable page (SELECT or PRESET scrolls; PRESET only steps patches outside the menu, ALGO changes tab, OCT buttons do nothing there). Lines are `MANUAL[]` entries, first character = style (`#` heading, ` ` text, `~` dim), at most 35 characters, capitals only (no `;` in the font). Keep it in step with the buttons, `midi_drain` and the limits. Preview: `tools/ui_preview.sh out.png 1 0 0 5 0 4 <first line>`.
 
 - Wording: in user-visible text (LCD manual, web app) a stored sound is a "patch", not a "preset"; only the hardware PRESET knob keeps its name. Identifiers (`PRESETS`, `preset_load`, `#presets` tab id, file names) are unchanged.
+
+## Chip oscillator (host-tested, golden pass; not flashed)
+
+- Module `chip` ("Chip osc", appended after `output`: type index 13, nothing moved, patch format unchanged): `web/src/modules.ts` (`CHIP_CHIPS`, `CHIP_SHAPES`, `CHIP_CHORDS`, `CHIP_GB_WAVE`, `CHIP_NOISE_MUL`) and `m_chip` in engine.c (tables via `export-defs.ts` -> `defs.h`). NES / GB, pulse 12.5/25/50/75 %, NES triangle or GB 4-bit wave, 15-bit LFSR noise (short = NES tap 6 / GB 7-bit mode), `arp` switch + `chord` + `speed` for the fast chip arpeggio, `coarse` / `fine` / `level`. Hard-edged (not band-limited) on purpose; both engines use the same integer steps. The golden `chip-*` patches are held to 10 % rms (edges land on another sample now and then) instead of 5 % (`tools/golden.sh`).
+- Presets 32 `NES arp lead` and 33 `GB wave bass` (web/presets/, written with `make()`; K1 shape, K2 chord, K3 / K4 the ADSR's decay and release; the base of each routed parameter is the bottom of its range and the knob carries the value, like the filter presets). The bank has 32 slots, so these two are only in the factory list (34 entries now).
+- Switch parameters (`ParamDef.toggle`: arp, delay sync / ping-pong, filter track) now show OFF / ON on the LCD (`export-defs.ts` gives them the choice names).
+

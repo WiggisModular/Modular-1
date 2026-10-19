@@ -3,7 +3,7 @@
 #pragma once
 #include <stdint.h>
 
-#define N_TYPES 13
+#define N_TYPES 14
 enum {
     T_FM1,
     T_OSC,
@@ -18,6 +18,7 @@ enum {
     T_DELAY,
     T_REVERB,
     T_OUTPUT,
+    T_CHIP,
 };
 
 /* fm1: Main */
@@ -207,15 +208,39 @@ enum {
 #define OUTPUT_NPAR 1
 #define OUTPUT_CVBASE -1
 
+/* chip: Chip osc */
+#define CHIP_I_PITCH 0
+#define CHIP_I_P1 1
+#define CHIP_I_P2 2
+#define CHIP_O_OUT 0
+#define CHIP_P_CHIP 0
+#define CHIP_P_SHAPE 1
+#define CHIP_P_ARP 2
+#define CHIP_P_CHORD 3
+#define CHIP_P_SPEED 4
+#define CHIP_P_COARSE 5
+#define CHIP_P_FINE 6
+#define CHIP_P_LEVEL 7
+#define CHIP_NIN 3
+#define CHIP_NOUT 1
+#define CHIP_NPAR 8
+#define CHIP_CVBASE 1
+
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
 static const uint8_t DELAY_DIV_NUM[DELAY_NDIV] = {1, 1, 1, 3, 1, 3, 1, 3, 2, 5, 4};
 static const uint8_t DELAY_DIV_DEN[DELAY_NDIV] = {6, 4, 3, 8, 2, 4, 1, 2, 1, 2, 1};
 static const char *const DELAY_DIV_NAME[DELAY_NDIV] = {"1/16T", "1/16", "1/8T", "1/16.", "1/8", "1/8.", "1/4", "3/8", "1/2", "5/8", "1/1"};
 
+#define CHIP_NCHORD 10
+#define CHIP_NOISE_MUL 64
+static const uint8_t CHIP_CHORD_LEN[CHIP_NCHORD] = {2, 3, 3, 3, 3, 3, 4, 4, 4, 4};
+static const uint8_t CHIP_CHORD_NOTE[CHIP_NCHORD][4] = {{0, 12, 0, 0}, {0, 4, 7, 0}, {0, 3, 7, 0}, {0, 7, 12, 0}, {0, 5, 7, 0}, {0, 3, 6, 0}, {0, 4, 7, 11}, {0, 3, 7, 10}, {0, 4, 7, 10}, {0, 4, 7, 12}};
+static const uint8_t CHIP_GB_WAVE[32] = {8, 10, 11, 12, 13, 14, 15, 15, 15, 15, 14, 13, 12, 11, 10, 8, 7, 5, 4, 3, 2, 1, 0, 0, 0, 0, 1, 2, 3, 4, 5, 7};
+
 #define MAX_IN 6
 #define MAX_OUT 8
-#define MAX_PAR 6
+#define MAX_PAR 8
 
 typedef struct {
     uint8_t nin, nout, npar;
@@ -353,6 +378,19 @@ static const char *const OUTPUT_PN[] = {"LEVEL"};
 static const uint8_t OUTPUT_LOG[] = {0};
 static const char *const OUTPUT_UNIT[] = {""};
 static const char *const *const OUTPUT_CH[] = {0};
+static const char *const CHIP_INNAMES[] = {"PITCH", "P1", "P2"};
+static const int32_t CHIP_MIN[] = {0, 0, 0, 0, 327680, -3145728, -6553600, 0};
+static const int32_t CHIP_MAX[] = {65536, 393216, 65536, 589824, 7864320, 3145728, 6553600, 65536};
+static const int32_t CHIP_DEF[] = {0, 65536, 0, 65536, 3932160, 0, 0, 45875};
+static const int32_t CHIP_INC[] = {65536, 65536, 65536, 65536, 75366, 65536, 131072, 655};
+static const char *const CHIP_PN[] = {"CHIP", "SHAPE", "ARP", "CHORD", "SPEED", "COARSE", "FINE", "LEVEL"};
+static const uint8_t CHIP_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0};
+static const char *const CHIP_UNIT[] = {"", "", "", "", "HZ", "ST", "CT", ""};
+static const char *const CHIP_CH0[] = {"NES", "GB", 0};
+static const char *const CHIP_CH1[] = {"PULSE 12.5%", "PULSE 25%", "PULSE 50%", "PULSE 75%", "TRI/WAVE", "NOISE", "NOISE SHORT", 0};
+static const char *const CHIP_CH2[] = {"OFF", "ON", 0};
+static const char *const CHIP_CH3[] = {"OCTAVE", "MAJOR", "MINOR", "POWER", "SUS4", "DIM", "MAJ7", "MIN7", "DOM7", "MAJOR+OCT", 0};
+static const char *const *const CHIP_CH[] = {CHIP_CH0, CHIP_CH1, CHIP_CH2, CHIP_CH3, 0, 0, 0, 0};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, FM1_CVBASE, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH},   /* fm1 */
@@ -368,4 +406,5 @@ static const def_t DEFS[N_TYPES] = {
     {DELAY_NIN, DELAY_NOUT, DELAY_NPAR, DELAY_CVBASE, DELAY_MIN, DELAY_MAX, DELAY_DEF, DELAY_INC, "DELAY", DELAY_PN, DELAY_INNAMES, DELAY_LOG, DELAY_UNIT, DELAY_CH},   /* delay */
     {REVERB_NIN, REVERB_NOUT, REVERB_NPAR, REVERB_CVBASE, REVERB_MIN, REVERB_MAX, REVERB_DEF, REVERB_INC, "REVERB", REVERB_PN, REVERB_INNAMES, REVERB_LOG, REVERB_UNIT, REVERB_CH},   /* reverb */
     {OUTPUT_NIN, OUTPUT_NOUT, OUTPUT_NPAR, OUTPUT_CVBASE, OUTPUT_MIN, OUTPUT_MAX, OUTPUT_DEF, OUTPUT_INC, "OUTPUT", OUTPUT_PN, OUTPUT_INNAMES, OUTPUT_LOG, OUTPUT_UNIT, OUTPUT_CH},   /* output */
+    {CHIP_NIN, CHIP_NOUT, CHIP_NPAR, CHIP_CVBASE, CHIP_MIN, CHIP_MAX, CHIP_DEF, CHIP_INC, "CHIP OSC", CHIP_PN, CHIP_INNAMES, CHIP_LOG, CHIP_UNIT, CHIP_CH},   /* chip */
 };

@@ -128,6 +128,67 @@ describe('engine', () => {
     expect(rms(l)).toBeGreaterThan(0.1);
   });
 
+  describe('chip oscillator', () => {
+    const chipOut = (params: Record<string, number>, frames = 4096): Float32Array => {
+      const p = emptyPatch();
+      const kb = addModule(p, DEFS.fm1, 0, 0);
+      const c = addModule(p, DEFS.chip, 0, 0);
+      Object.assign(c.params, { level: 1 }, params);
+      const out = addModule(p, DEFS.output, 0, 0);
+      connect(p, DEFS, { module: kb.id, port: 'pitch' }, { module: c.id, port: 'pitch' });
+      connect(p, DEFS, { module: c.id, port: 'out' }, { module: out.id, port: 'l' });
+      const e = new Engine(SR);
+      e.load(p);
+      return render(e, frames).l;
+    };
+    const distinct = (a: Float32Array): number => new Set(Array.from(a, (v) => Math.round(v * 1e4))).size;
+
+    it('the pulse widths are 12.5, 25, 50 and 75 percent', () => {
+      [0.125, 0.25, 0.5, 0.75].forEach((duty, shape) => {
+        const a = chipOut({ shape }, 48000);
+        const high = a.filter((v) => v > 0).length / a.length;
+        expect(high, `shape ${shape}`).toBeCloseTo(duty, 1);
+        expect(new Set(a).size).toBe(2); // only two levels: no band limiting
+      });
+    });
+
+    it('the NES triangle and the Game Boy wave are 4 bit: at most 16 levels, and they differ', () => {
+      const tri = chipOut({ chip: 0, shape: 4 });
+      const wave = chipOut({ chip: 1, shape: 4 });
+      expect(distinct(tri)).toBeLessThanOrEqual(16);
+      expect(distinct(tri)).toBeGreaterThan(8);
+      expect(distinct(wave)).toBeLessThanOrEqual(16);
+      expect(distinct(wave)).toBeGreaterThan(8);
+      expect(tri).not.toEqual(wave);
+    });
+
+    it('the noise is a bit stream that depends on the chip and the mode, and is repeatable', () => {
+      const a = chipOut({ shape: 5, chip: 0 });
+      expect(new Set(a).size).toBe(2);
+      expect(chipOut({ shape: 5, chip: 0 })).toEqual(a);
+      expect(chipOut({ shape: 6, chip: 0 })).not.toEqual(a);
+      expect(chipOut({ shape: 6, chip: 1 })).not.toEqual(chipOut({ shape: 6, chip: 0 }));
+      const mean = a.reduce((s, v) => s + v, 0) / a.length;
+      expect(Math.abs(mean)).toBeLessThan(0.15);
+    });
+
+    it('the arpeggio cycles the chord one note per 1/speed second, without glide', () => {
+      const speed = 20; // slow enough to count the cycles of a step
+      const a = chipOut({ shape: 2, arp: 1, chord: 1, speed }, SR / 2);
+      const win = Math.round(SR / speed); // one step
+      const f = (k: number): number => freq(a.subarray(k * win + 8, (k + 1) * win - 8)) * (win / (win - 16));
+      const base = f(0);
+      expect(base).toBeGreaterThan(200);
+      const ratios = [0, 1, 2, 3, 4, 5].map((k) => f(k) / base);
+      const want = [1, 2 ** (4 / 12), 2 ** (7 / 12), 1, 2 ** (4 / 12), 2 ** (7 / 12)];
+      ratios.forEach((r, k) => expect(r, `step ${k}`).toBeGreaterThan(want[k] * 0.9));
+      ratios.forEach((r, k) => expect(r, `step ${k}`).toBeLessThan(want[k] * 1.1));
+      // without the switch the pitch stays
+      const still = chipOut({ shape: 2, arp: 0 }, SR / 4);
+      expect(freq(still.subarray(0, win))).toBeCloseTo(freq(still.subarray(2 * win, 3 * win)), -1);
+    });
+  });
+
   it('every module but fm1 and output has the two parameter inputs and a matrix', () => {
     for (const d of Object.values(DEFS)) {
       const has = d.inputs.filter((i) => i.pin).map((i) => i.name);

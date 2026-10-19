@@ -2,7 +2,7 @@
 // Writes firmware/src/defs.h (module definitions for the C engine) and firmware/src/presets.h (the factory
 // patches as binary). Run from web/:  npx vite-node scripts/export-defs.ts
 import { writeFileSync } from 'node:fs';
-import { DEFS, DELAY_DIVS, DELAY_CLK_PPQN } from '../src/modules';
+import { DEFS, DELAY_DIVS, DELAY_CLK_PPQN, CHIP_CHORDS, CHIP_GB_WAVE, CHIP_NOISE_MUL } from '../src/modules';
 import { encodePatch, TYPE_ORDER, toQ16 } from '../src/patchbin';
 import { PRESETS } from '../src/presets';
 
@@ -39,6 +39,12 @@ w(`static const uint8_t DELAY_DIV_NUM[DELAY_NDIV] = {${DELAY_DIVS.map((d) => d.n
 w(`static const uint8_t DELAY_DIV_DEN[DELAY_NDIV] = {${DELAY_DIVS.map((d) => d.den).join(', ')}};`);
 w(`static const char *const DELAY_DIV_NAME[DELAY_NDIV] = {${DELAY_DIVS.map((d) => `"${d.name}"`).join(', ')}};`);
 w();
+w(`#define CHIP_NCHORD ${CHIP_CHORDS.length}`);
+w(`#define CHIP_NOISE_MUL ${CHIP_NOISE_MUL}`);
+w(`static const uint8_t CHIP_CHORD_LEN[CHIP_NCHORD] = {${CHIP_CHORDS.map((c) => c.notes.length).join(', ')}};`);
+w(`static const uint8_t CHIP_CHORD_NOTE[CHIP_NCHORD][4] = {${CHIP_CHORDS.map((c) => `{${[...c.notes, 0, 0, 0].slice(0, 4).join(', ')}}`).join(', ')}};`);
+w(`static const uint8_t CHIP_GB_WAVE[32] = {${CHIP_GB_WAVE.join(', ')}};`);
+w();
 const maxOf = (f: (t: string) => number): number => Math.max(...TYPE_ORDER.map(f));
 w(`#define MAX_IN ${maxOf((t) => DEFS[t].inputs.length)}`);
 w(`#define MAX_OUT ${maxOf((t) => DEFS[t].outputs.length)}`);
@@ -68,10 +74,12 @@ for (const t of TYPE_ORDER) {
   w(`static const char *const ${up(t)}_PN[] = {${ps.map((p) => `"${p.name.toUpperCase()}"`).join(', ')}};`);
   w(`static const uint8_t ${up(t)}_LOG[] = {${ps.map((p) => (p.log ? (p.bend ? 2 : 1) : 0)).join(', ')}};`);
   w(`static const char *const ${up(t)}_UNIT[] = {${ps.map((p) => `"${(p.unit ?? '').toUpperCase()}"`).join(', ')}};`);
+  const names = (p: (typeof ps)[number]): string[] | undefined => p.choices ?? (p.toggle ? ['off', 'on'] : undefined);   // a switch shows OFF / ON on the LCD
   ps.forEach((p, i) => {
-    if (p.choices) w(`static const char *const ${up(t)}_CH${i}[] = {${p.choices.map((c) => `"${c.toUpperCase()}"`).join(', ')}, 0};`);
+    const ch = names(p);
+    if (ch) w(`static const char *const ${up(t)}_CH${i}[] = {${ch.map((c) => `"${c.toUpperCase()}"`).join(', ')}, 0};`);
   });
-  w(`static const char *const *const ${up(t)}_CH[] = {${ps.map((p, i) => (p.choices ? `${up(t)}_CH${i}` : '0')).join(', ')}};`);
+  w(`static const char *const *const ${up(t)}_CH[] = {${ps.map((p, i) => (names(p) ? `${up(t)}_CH${i}` : '0')).join(', ')}};`);
 }
 w();
 w('static const def_t DEFS[N_TYPES] = {');

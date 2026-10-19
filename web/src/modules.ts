@@ -139,6 +139,106 @@ const osc: ModuleImpl<{ phase: number }> = {
   },
 };
 
+/**
+ * Chip oscillator: the sound of a classic chiptune chip. chip NES (2A03) or GB (the Game Boy's APU); shape: four pulse widths (12.5, 25, 50,
+ * 75 %), the triangle of the NES (32 steps of 4 bits) or the Game Boy's wave channel (a 4-bit 32-sample sine), and the noise LFSR (15 bit,
+ * or short: the NES's 93-step tap 6, the Game Boy's 7-bit mode). Nothing is band-limited and the levels are the chips' own 4-bit steps, so
+ * it aliases like the originals. `arp`: the fast arpeggio of the time: the pitch cycles through a chord's notes at `speed` steps a second
+ * (60 = one note per video frame), no glide. The pitch is the usual octaves input, `level` the output level.
+ */
+export const CHIP_CHIPS = ['NES', 'GB'];
+export const CHIP_SHAPES = ['pulse 12.5%', 'pulse 25%', 'pulse 50%', 'pulse 75%', 'tri/wave', 'noise', 'noise short'];
+export const CHIP_CHORDS: { name: string; notes: number[] }[] = [
+  { name: 'octave', notes: [0, 12] },
+  { name: 'major', notes: [0, 4, 7] },
+  { name: 'minor', notes: [0, 3, 7] },
+  { name: 'power', notes: [0, 7, 12] },
+  { name: 'sus4', notes: [0, 5, 7] },
+  { name: 'dim', notes: [0, 3, 6] },
+  { name: 'maj7', notes: [0, 4, 7, 11] },
+  { name: 'min7', notes: [0, 3, 7, 10] },
+  { name: 'dom7', notes: [0, 4, 7, 10] },
+  { name: 'major+oct', notes: [0, 4, 7, 12] },
+];
+/** the Game Boy's wave channel: 32 samples of 4 bits (a sine) */
+export const CHIP_GB_WAVE = [8, 10, 11, 12, 13, 14, 15, 15, 15, 15, 14, 13, 12, 11, 10, 8, 7, 5, 4, 3, 2, 1, 0, 0, 0, 0, 1, 2, 3, 4, 5, 7];
+/** the noise clock is this many times the pitch's frequency */
+export const CHIP_NOISE_MUL = 64;
+/** a 4 bit level 0..15 as a signal -1..1: (2v - 15) / 15 in Q16 steps, so the firmware gets the same numbers */
+const chipLevel = (v: number): number => Math.trunc(((2 * v - 15) * 65536) / 15) / 65536;
+
+interface ChipState {
+  phase: number;
+  arp: number;
+  step: number;
+  noiseClock: number;
+  lfsr: number;
+}
+
+const chip: ModuleImpl<ChipState> = {
+  def: {
+    type: 'chip',
+    label: 'Chip osc',
+    inputs: [control('pitch')],
+    outputs: [audio('out')],
+    params: [
+      param('chip', 0, 1, 0, { step: 1, choices: CHIP_CHIPS }),
+      param('shape', 0, 6, 1, { step: 1, choices: CHIP_SHAPES }),
+      param('arp', 0, 1, 0, { step: 1, toggle: true }),
+      param('chord', 0, CHIP_CHORDS.length - 1, 1, { step: 1, choices: CHIP_CHORDS.map((c) => c.name) }),
+      param('speed', 5, 120, 60, { step: 1, unit: 'Hz' }),
+      param('coarse', -48, 48, 0, { step: 1, unit: 'st' }),
+      param('fine', -100, 100, 0, { step: 1, unit: 'ct' }),
+      param('level', 0, 1, 0.7, { step: 0.01 }),
+    ],
+  },
+  init: () => ({ phase: 0, arp: 0, step: 0, noiseClock: 0, lfsr: 0x7fff }),
+  process(c, s) {
+    const { pitch } = c.inp;
+    const gb = Math.round(c.p.chip ?? 0) === 1;
+    const shape = Math.min(6, Math.max(0, Math.round(c.p.shape ?? 1)));
+    const arpOn = (c.p.arp ?? 0) >= 0.5;
+    const notes = CHIP_CHORDS[Math.min(CHIP_CHORDS.length - 1, Math.max(0, Math.round(c.p.chord ?? 1)))].notes;
+    const speed = c.p.speed ?? 60;
+    const base = (c.p.coarse ?? 0) / 12 + (c.p.fine ?? 0) / 1200;
+    const lvl = c.p.level ?? 0.7;
+    const out = c.out.out;
+    for (let i = 0; i < c.n; i++) {
+      if (arpOn) {
+        s.arp += speed / c.sr;
+        if (s.arp >= 1) {
+          s.arp -= 1;
+          s.step = (s.step + 1) % notes.length;
+        }
+      }
+      const semis = arpOn ? notes[s.step % notes.length] : 0;
+      const f = C4 * Math.pow(2, pitch[i] + base + semis / 12);
+      const dt = Math.min(f / c.sr, 0.45);
+      s.phase += dt;
+      if (s.phase >= 1) s.phase -= 1;
+      let v: number;
+      if (shape <= 3) {
+        v = s.phase < [0.125, 0.25, 0.5, 0.75][shape] ? 1 : -1;
+      } else if (shape === 4) {
+        const idx = Math.floor(s.phase * 32);
+        v = gb ? chipLevel(CHIP_GB_WAVE[idx]) : chipLevel(idx < 16 ? 15 - idx : idx - 16);
+      } else {
+        s.noiseClock += dt * CHIP_NOISE_MUL;
+        let k = Math.min(8, Math.floor(s.noiseClock));
+        s.noiseClock -= Math.floor(s.noiseClock);
+        while (k-- > 0) {
+          const short = shape === 6;
+          const fb = (s.lfsr ^ (s.lfsr >> (short && !gb ? 6 : 1))) & 1;
+          s.lfsr = (s.lfsr >> 1) | (fb << 14);
+          if (gb && short) s.lfsr = (s.lfsr & ~(1 << 6)) | (fb << 6);
+        }
+        v = s.lfsr & 1 ? -1 : 1;
+      }
+      out[i] = v * lvl;
+    }
+  },
+};
+
 /** Note lengths of the synced delay, shortest first (the time knob steps through them): name and length in quarter notes = num / den. */
 export const DELAY_DIVS: { name: string; num: number; den: number }[] = [
   { name: '1/16T', num: 1, den: 6 },
@@ -580,7 +680,7 @@ const output: ModuleImpl<null> = {
   },
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output];
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, chip];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an
