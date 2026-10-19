@@ -21,7 +21,7 @@ static const char *const DR_SHORT[DR_N] = {"KICK", "SNARE", "C HAT", "O HAT"};
 /* decay time in ms at decay 0 and 100, per part */
 static const uint16_t DR_TAU_LO[DR_N] = {60, 40, 10, 80};
 static const uint16_t DR_TAU_HI[DR_N] = {400, 300, 120, 500};
-static const int32_t DR_GAIN[DR_N] = {58000, 44000, 40000, 40000};          /* Q16, the part's full level */
+static const int32_t DR_GAIN[DR_N] = {50000, 36000, 32000, 32000};          /* Q16, the part's full level */
 
 typedef struct {
     const char *name;
@@ -108,7 +108,7 @@ static void dr_defaults(void)
     dr.preset = 0;
     for (p = 0; p < DR_N; p++) {
         dr.pat[p] = DR_PRESETS[0].pat[p];
-        dr.level[p] = 80;
+        dr.level[p] = 70;
         dr.decay[p] = DR_PRESETS[0].decay[p];
     }
     dr.bpm = DR_PRESETS[0].bpm;
