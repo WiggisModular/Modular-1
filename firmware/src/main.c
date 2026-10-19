@@ -494,7 +494,7 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
         if (st == 0xF0u) {                      /* realtime: the clock comes from the arpeggiator while it runs, else from MIDI in */
             uint32_t rt = (pkt >> 8) & 0xFFu;
             if (rt == 0xF8u) {
-                if (midi_clk_run && cfg.clock_in && !(AV[0].play | AV[1].play | AV[2].play | AV[3].play))
+                if (midi_clk_run && cfg.clock_in && !(AV[0].play | AV[1].play))
                     eng_clock_tick();
             } else {
                 midi_clk_run = rt != 0xFCu;
