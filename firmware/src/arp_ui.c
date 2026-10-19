@@ -3,7 +3,7 @@
 /* The arpeggiator pages of the LCD (ARP, SEQ and LFO buttons): what K1..K4 change, as big values. Included after ui.c
  * (put, pad, fmt_int, colours) and arp.c (the settings).
  *
- *   MELODY (ARP)   K1 arp mode   K2 scale   K3 root note   K4 speed (BPM)
+ *   MELODY (ARP)   K1 arp mode   K2 scale (with its note count)   K3 root note   K4 speed (BPM)
  *   RHYTHM (SEQ)   K1 steps      K2 pulses  K3 rotation    K4 rate        + the Euclid pattern as dots
  *   CHAOS  (LFO)   K1 melody chaos   K2 velocity chaos   K3 rhythm chaos   K4 octaves */
 
@@ -36,7 +36,13 @@ static void au_value(uint32_t page, uint32_t k, char *out)
     uint32_t v = 0;
     switch (page * 4u + k) {
     case 4:  p = put(p, ARP_MODE_NAME[arp_c.mode]); break;
-    case 5:  p = put(p, ARP_SCALES[arp_c.scale].name); break;
+    case 5:                             /* the name and its number of notes: Maj Pentatonic (6) */
+        p = put(p, ARP_SCALES[arp_c.scale].name);
+        p = put(p, " (");
+        fmt_int(num, ARP_SCALES[arp_c.scale].n);
+        p = put(p, num);
+        p = put(p, ")");
+        break;
     case 6:  p = put_note(p, arp_c.root); break;
     case 7:  fmt_int(num, arp_c.bpm); p = put(p, num); p = put(p, " BPM"); break;
     case 8:  v = arp_c.steps; break;
