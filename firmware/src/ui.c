@@ -106,6 +106,26 @@ static char *put_param(char *d, const def_t *def, uint32_t j, int32_t q16)
         int32_t i = (q16 + 32768) >> 16, n = 0;
         while (names[n])
             n++;
+        if (def->pmorph && def->pmorph[j] && n > 1) {          /* between two shapes: SAW>SQU 40%, else the nearest */
+            int32_t k = q16 >> 16, pct;
+            k = k < 0 ? 0 : k > n - 2 ? n - 2 : k;
+            pct = (int32_t)(((int64_t)(q16 - (k << 16)) * 100 + 32768) >> 16);
+            if (pct > 3 && pct < 97) {
+                char num[12];
+                uint32_t c;
+                for (c = 0; c < 3u && names[k][c]; c++)         /* the first three letters of each */
+                    *d++ = names[k][c];
+                *d++ = '>';
+                for (c = 0; c < 3u && names[k + 1][c]; c++)
+                    *d++ = names[k + 1][c];
+                *d++ = ' ';
+                fmt_int(num, pct);
+                d = put(d, num);
+                *d++ = '%';
+                *d = 0;
+                return d;
+            }
+        }
         i = i < 0 ? 0 : i >= n ? n - 1 : i;
         d = put(d, names[i]);
         *d = 0;

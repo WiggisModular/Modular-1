@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
-import { addModule, connect, disconnect, emptyPatch, fromUnit, modulate, processingOrder, removeModule, toUnit, validatePatch } from './patch';
+import { addModule, connect, disconnect, emptyPatch, fromUnit, modulate, morphText, processingOrder, removeModule, toUnit, validatePatch } from './patch';
 import { PRESETS } from './presets';
 
 const SR = 48000;
@@ -126,6 +126,33 @@ describe('engine', () => {
     const { l } = render(e, SR / 2);
     expect(l.every(Number.isFinite)).toBe(true);
     expect(rms(l)).toBeGreaterThan(0.1);
+  });
+
+  it('the oscillator morphs between its waveforms: whole numbers are the pure shapes, in between is the crossfade', () => {
+    const run = (wave: number): Float32Array => {
+      const p = emptyPatch();
+      const kb = addModule(p, DEFS.fm1, 0, 0);
+      const osc = addModule(p, DEFS.osc, 0, 0);
+      Object.assign(osc.params, { wave, level: 1, pw: 0.3 });
+      const out = addModule(p, DEFS.output, 0, 0);
+      connect(p, DEFS, { module: kb.id, port: 'pitch' }, { module: osc.id, port: 'pitch' });
+      connect(p, DEFS, { module: osc.id, port: 'out' }, { module: out.id, port: 'l' });
+      const e = new Engine(SR);
+      e.load(p);
+      return render(e, 4096).l;
+    };
+    const pure = [0, 1, 2, 3].map(run);
+    for (let k = 0; k < 3; k++) {
+      const mid = run(k + 0.5);
+      let worst = 0;
+      for (let i = 0; i < mid.length; i++) worst = Math.max(worst, Math.abs(mid[i] - (pure[k][i] + pure[k + 1][i]) / 2));
+      expect(worst, `halfway ${k}..${k + 1}`).toBeLessThan(1e-4);
+    }
+    expect(run(3.7)).toEqual(pure[3]); // beyond the last shape stays on it
+    expect(run(-1)).toEqual(pure[0]);
+    expect(morphText(DEFS.osc.params[0].choices!, 1.4)).toBe('triangle > saw 40%');
+    expect(morphText(DEFS.osc.params[0].choices!, 2)).toBe('saw');
+    expect(morphText(DEFS.osc.params[0].choices!, 2.98)).toBe('square');
   });
 
   it('every module but fm1 and output has the two parameter inputs and a matrix', () => {

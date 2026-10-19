@@ -601,7 +601,10 @@ static void m_osc(node_t *nd, uint32_t n)
     int32_t pw_q = clampi(EF(nd, OSC_P_PW), 3277, 62259);                  /* 0.05 .. 0.95 */
     uint32_t pw = (uint32_t)pw_q << 16, phase = nd->s.osc.phase, i;
     int32_t base = EF(nd, OSC_P_COARSE) / 12 + EF(nd, OSC_P_FINE) / 1200;
-    int32_t kind = round_q16(EF(nd, OSC_P_WAVE)), idx = EF(nd, OSC_P_PM), lvl = EF(nd, OSC_P_LEVEL);
+    int32_t morph = clampi(EF(nd, OSC_P_WAVE), 0, 3 << 16), kind = morph >> 16, mix, idx = EF(nd, OSC_P_PM), lvl = EF(nd, OSC_P_LEVEL);
+    if (kind > 2)
+        kind = 2;
+    mix = morph - (kind << 16);                                            /* 0 sine .. 1 triangle .. 2 saw .. 3 square: crossfaded in between */
     for (i = 0; i < n; i++) {
         uint32_t dt = exp2_scale(INC_C4, pitch[i] + base), ph;
         if (dt > DT_MAX)
@@ -610,7 +613,12 @@ static void m_osc(node_t *nd, uint32_t n)
         ph = phase;
         if (idx > 0)
             ph += (uint32_t)(((int64_t)mul16(idx, pm[i]) * TURN_PER_RAD) >> 16);
-        out[i] = mul16(wave(kind, ph, dt, pw), lvl);
+        int32_t a = wave(kind, ph, dt, pw);
+        if (mix == ENG_ONE)
+            a = wave(kind + 1, ph, dt, pw);
+        else if (mix)
+            a += mul16(wave(kind + 1, ph, dt, pw) - a, mix);
+        out[i] = mul16(a, lvl);
     }
     nd->s.osc.phase = phase;
 }

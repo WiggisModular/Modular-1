@@ -54,6 +54,7 @@ w('    const char *const *inname;              /* input names, upper case */');
 w('    const uint8_t *plog;                    /* 1: a logarithmic parameter, 2: logarithmic and bent (the filter cutoff) */');
 w('    const char *const *punit;               /* "HZ", "ST", ... or "" */');
 w('    const char *const *const *pchoice;      /* per parameter: the names of a choice parameter (0-terminated), or 0 */');
+w('    const uint8_t *pmorph;                  /* per parameter: 1 = the value morphs between neighbouring choices (shown SIN>TRI 40%) */');
 w('} def_t;');
 w();
 for (const t of TYPE_ORDER) {
@@ -71,6 +72,7 @@ for (const t of TYPE_ORDER) {
   ps.forEach((p, i) => {
     if (p.choices) w(`static const char *const ${up(t)}_CH${i}[] = {${p.choices.map((c) => `"${c.toUpperCase()}"`).join(', ')}, 0};`);
   });
+  w(`static const uint8_t ${up(t)}_MORPH[] = {${ps.map((p) => (p.morph ? 1 : 0)).join(', ')}};`);
   w(`static const char *const *const ${up(t)}_CH[] = {${ps.map((p, i) => (p.choices ? `${up(t)}_CH${i}` : '0')).join(', ')}};`);
 }
 w();
@@ -79,7 +81,7 @@ for (const t of TYPE_ORDER) {
   const d = DEFS[t];
   const has = d.params.length > 0;
   const n = up(t);
-  w(`    {${n}_NIN, ${n}_NOUT, ${n}_NPAR, ${n}_CVBASE, ${has ? `${n}_MIN, ${n}_MAX, ${n}_DEF, ${n}_INC` : '0, 0, 0, 0'}, "${d.label.toUpperCase()}", ${has ? `${n}_PN` : '0'}, ${n}_INNAMES, ${has ? `${n}_LOG, ${n}_UNIT, ${n}_CH` : '0, 0, 0'}},   /* ${t} */`);
+  w(`    {${n}_NIN, ${n}_NOUT, ${n}_NPAR, ${n}_CVBASE, ${has ? `${n}_MIN, ${n}_MAX, ${n}_DEF, ${n}_INC` : '0, 0, 0, 0'}, "${d.label.toUpperCase()}", ${has ? `${n}_PN` : '0'}, ${n}_INNAMES, ${has ? `${n}_LOG, ${n}_UNIT, ${n}_CH, ${n}_MORPH` : '0, 0, 0, 0'}},   /* ${t} */`);
 }
 w('};');
 w();

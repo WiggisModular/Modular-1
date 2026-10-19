@@ -39,6 +39,22 @@ kit('waves', (add, wire) => {
   });
   wire(mix, 'out', out, 'l');
 });
+kit('osc-morph', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const mix = add('mixer', 0, 0, { l1: 0.3, l2: 0.3, l3: 0.3, l4: 0.3 });
+  const out = add('output', 0, 0);
+  [0.35, 1.5, 2.8].forEach((w, i) => {
+    const o = add('osc', 0, 0, { wave: w, pw: 0.35, coarse: i * 4 - 8, fine: i * 5, level: 0.9 });
+    wire(kb, 'pitch', o, 'pitch');
+    wire(o, 'out', mix, `in${i + 1}`);
+  });
+  const lfo = add('lfo', 0, 0, { wave: 1, rate: 1.3, depth: 1 });
+  const m = add('osc', 0, 0, { wave: 0, level: 0.9 }, { map: { p1: ['wave'], p2: [] } });   // the morph under a slow LFO
+  wire(kb, 'pitch', m, 'pitch');
+  wire(lfo, 'out', m, 'p1');
+  wire(m, 'out', mix, 'in4');
+  wire(mix, 'out', out, 'l');
+});
 kit('lfo-sh', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const sh = add('lfo', 0, 0, { wave: 4, rate: 9, depth: 0.8 });
