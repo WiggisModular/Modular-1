@@ -29,7 +29,6 @@
 ## 1.0.1 (firmware `M1-1.0.1`, app 1.0.1)
 
 ### Added
-- MELODY page: the scale shows its number of notes, e.g. `Maj Pentatonic (6)`.
 - **Loading screen:** the name, the version, a `LOADING INPUT / AUDIO / USB / MIDI / STATE / VOICE n` line and a bar, shown while the FM-1 starts and the patches load, and for at least 5 seconds. The pages stay hidden until it is done; the restore note (STATE RESTORED or RESTORE FAILED) follows in the top bar.
 - **MANUAL tab in the settings menu:** one scrollable page (SELECT scrolls) with the controls, the MIDI mapping, the editor address and the memory limits. Control names are in the accent colour.
 
