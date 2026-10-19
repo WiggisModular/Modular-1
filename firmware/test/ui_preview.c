@@ -50,6 +50,9 @@ static void lcd_sync(void) {}
 #include "../src/ui.c"
 #include "../src/arp_ui.c"
 static void fm1_led_key(uint32_t id, int on) { (void)id; (void)on; }
+#define FM1_NCOL 11u
+static const int8_t FM1_KEYMAP[6][FM1_NCOL];
+static uint8_t fm1_led_dim[FM1_NCOL];
 static void leds_avail(void) {}
 static void leds_arp(void) {}
 static void leds_octave(void) {}
@@ -76,8 +79,8 @@ int main(int argc, char **argv)
     sel = argc > 3 ? (uint32_t)atoi(argv[3]) : 0u;
     octave = argc > 4 ? atoi(argv[4]) : 0;
     page = argc > 5 ? (uint8_t)atoi(argv[5]) : 0u;          /* 1..3: the arpeggiator pages; 9: the drums (STEP = the playhead) */
-    if (page == 9u || page == 8u) {                         /* 9: the drum matrix, 8: its sound page (STEP = the playhead; PRESET_INDEX picks the drum pattern) */
-        page = page == 8u ? 1u : 0u;
+    if (page == 9u || page == 8u || page == 7u) {           /* 9: the drum matrix, 8: its sound page, 7: its mix page (STEP = the playhead; PRESET_INDEX picks the drum pattern) */
+        page = page == 7u ? 2u : page == 8u ? 1u : 0u;
         dsel = 1;
         dr_defaults();
         dr_load_preset(p);                                  /* the pattern is the PRESET_INDEX (modulo 8) */

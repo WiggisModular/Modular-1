@@ -70,7 +70,158 @@ int main(void)
         CHECK(tail < 200, "%s tail %d after 3 s", DR_NAME[p], tail);
     }
 
-    /* the kick is low: its first 40 ms hold few zero crossings (150 Hz sweeping to 52 Hz: at most ~8 in 40 ms) */
+    /* loud enough: every part peaks at 0.75 .. 1.0 at level 100, and the default level is no quieter than 0.6 of that */
+    for (p = 0; p < DR_N; p++) {
+        reset();
+        dr.level[p] = 100;
+        dr_gain = ENG_ONE / 4;                          /* (headroom: the mix clamps at 1.0) */
+        dr_hit(p, 127);
+        run(60, &pk);
+        dr_gain = ENG_ONE;
+        CHECK(pk * 4 > 49152 && pk * 4 < 70000, "%s peak at level 100: %.2f", DR_NAME[p], pk * 4 / 65536.0);
+        reset();
+        dr_hit(p, 110);                                 /* a normal step at the default level */
+        dr_gain = ENG_ONE / 4;
+        run(60, &pk);
+        dr_gain = ENG_ONE;
+        CHECK(pk * 4 > 36000, "%s normal step at the default level: %.2f", DR_NAME[p], pk * 4 / 65536.0);
+    }
+
+    /* the controls: tune moves the pitch, drive makes it louder / harder, decay and the fourth control change the sound */
+    {
+        int32_t rms_a, rms_b;
+        int zc2, zc3;
+        /* kick tune: zero crossings in the tail (after the sweep) */
+        zc2 = zc3 = 0;
+        {
+            int b2, j2, pv = 0;
+            reset();
+            dr.pr[DR_KICK][DP_TUNE] = 0;
+            dr.pr[DR_KICK][DP_DECAY] = 100;
+            dr_hit(DR_KICK, 127);
+            for (b2 = 0; b2 < 60; b2++) {
+                memset(L, 0, sizeof L);
+                memset(R, 0, sizeof R);
+                dr_run(128);
+                dr_render(L, R, 128);
+                for (j2 = 0; j2 < 128; j2++) {
+                    int sg = L[j2] > 0;
+                    if (b2 >= 20 && sg != pv)
+                        zc2++;
+                    pv = sg;
+                }
+            }
+        }
+        {
+            int b2, j2, pv = 0;
+            reset();
+            dr.pr[DR_KICK][DP_TUNE] = 100;
+            dr.pr[DR_KICK][DP_DECAY] = 100;
+            dr_hit(DR_KICK, 127);
+            for (b2 = 0; b2 < 60; b2++) {
+                memset(L, 0, sizeof L);
+                memset(R, 0, sizeof R);
+                dr_run(128);
+                dr_render(L, R, 128);
+                for (j2 = 0; j2 < 128; j2++) {
+                    int sg = L[j2] > 0;
+                    if (b2 >= 20 && sg != pv)
+                        zc3++;
+                    pv = sg;
+                }
+            }
+        }
+        CHECK(zc3 > zc2 + 4, "kick tune 100 (%d crossings) is higher than tune 0 (%d)", zc3, zc2);
+        /* the frequency delay: a long pitch drop has more crossings early on than a short one */
+        {
+            int b2, j2, pv = 0, zl = 0, zs = 0;
+            uint32_t k2;
+            for (k2 = 0; k2 < 2u; k2++) {
+                int *zz = k2 ? &zl : &zs, cnt = 0;
+                reset();
+                dr.pr[DR_KICK][DP_DRIVE] = 0;
+                dr.pr[DR_KICK][DP_X] = k2 ? 100 : 0;
+                dr_hit(DR_KICK, 127);
+                for (b2 = 0; b2 < 10; b2++) {
+                    memset(L, 0, sizeof L);
+                    memset(R, 0, sizeof R);
+                    dr_run(128);
+                    dr_render(L, R, 128);
+                    for (j2 = 0; j2 < 128; j2++) {
+                        int sg = L[j2] > 0;
+                        if (b2 >= 3 && sg != pv)
+                            cnt++;
+                        pv = sg;
+                    }
+                }
+                *zz = cnt;
+            }
+            CHECK(zl > zs, "kick freq delay: long drop %d crossings, short %d", zl, zs);
+        }
+        /* drive: more energy in the tail of a hit at the same level (the hit saturates, the shaper gains the quiet part up) */
+        for (p = 0; p < DR_N; p++) {
+            reset();
+            dr_gain = ENG_ONE / 8;
+            dr_hit(p, 60);
+            run(40, &rms_a);
+            reset();
+            dr.pr[p][DP_DRIVE] = 100;
+            dr_gain = ENG_ONE / 8;
+            dr_hit(p, 60);
+            run(40, &rms_b);
+            dr_gain = ENG_ONE;
+            CHECK(rms_b > rms_a || rms_a < 0, "%s: drive 100 peak %d vs %d without", DR_NAME[p], rms_b, rms_a);
+        }
+        /* snare noise: 0 = a pure tone (few crossings), 100 = pure noise (many) */
+        {
+            int cs[2], b2, j2, pv;
+            uint32_t k2;
+            for (k2 = 0; k2 < 2u; k2++) {
+                reset();
+                dr.pr[DR_SNARE][DP_X] = k2 ? 100 : 0;
+                dr_hit(DR_SNARE, 127);
+                cs[k2] = 0;
+                pv = 0;
+                for (b2 = 0; b2 < 8; b2++) {
+                    memset(L, 0, sizeof L);
+                    memset(R, 0, sizeof R);
+                    dr_run(128);
+                    dr_render(L, R, 128);
+                    for (j2 = 0; j2 < 128; j2++) {
+                        int sg = L[j2] > 0;
+                        if (sg != pv)
+                            cs[k2]++;
+                        pv = sg;
+                    }
+                }
+            }
+            CHECK(cs[1] > cs[0] * 3, "snare noise 100: %d crossings, noise 0: %d", cs[1], cs[0]);
+        }
+        /* the clap has three bursts: its level dips twice in the first 30 ms */
+        {
+            int dips = 0, b2, j2;
+            int32_t win_peak[16];
+            reset();
+            dr.pr[DR_CLAP][DP_X] = 100;                 /* 15 ms apart */
+            dr_hit(DR_CLAP, 127);
+            for (b2 = 0; b2 < 16; b2++) {
+                int32_t m = 0;
+                memset(L, 0, sizeof L);
+                memset(R, 0, sizeof R);
+                dr_run(128);
+                dr_render(L, R, 128);
+                for (j2 = 0; j2 < 128; j2++)
+                    m = abs(L[j2]) > m ? abs(L[j2]) : m;
+                win_peak[b2] = m;
+            }
+            for (b2 = 1; b2 < 15; b2++)
+                if (win_peak[b2] < win_peak[b2 - 1] && win_peak[b2] < win_peak[b2 + 1])
+                    dips++;
+            CHECK(dips >= 1, "clap bursts: %d dips", dips);
+        }
+    }
+
+    /* the kick is low: its first 40 ms hold few zero crossings (150 Hz sweeping to 54 Hz: at most ~8 in 40 ms) */
     reset();
     dr_hit(DR_KICK, 127);
     zc = 0;
@@ -96,14 +247,14 @@ int main(void)
     run(3, &pk);
     CHECK(pk == 0, "level 0 gives %d", pk);
     reset();
-    dr.decay[DR_OHAT] = 0;
+    dr.pr[DR_OHAT][DP_DECAY] = 0;
     dr_hit(DR_OHAT, 127);
     run(40, 0);
     run(1, &tail);
     {
         int32_t tail_long;
         reset();
-        dr.decay[DR_OHAT] = 100;
+        dr.pr[DR_OHAT][DP_DECAY] = 100;
         dr_hit(DR_OHAT, 127);
         run(40, 0);
         run(1, &tail_long);
@@ -112,7 +263,7 @@ int main(void)
 
     /* a long decay ends: the kick at decay 100 and the open hat at 100 do not stall above the liveness threshold */
     reset();
-    dr.decay[DR_KICK] = dr.decay[DR_OHAT] = 100;
+    dr.pr[DR_KICK][DP_DECAY] = dr.pr[DR_OHAT][DP_DECAY] = 100;
     dr_hit(DR_KICK, 127);
     dr_hit(DR_OHAT, 127);
     run(2500, 0);
@@ -120,7 +271,7 @@ int main(void)
 
     /* the closed hat chokes the open one */
     reset();
-    dr.decay[DR_OHAT] = 100;
+    dr.pr[DR_OHAT][DP_DECAY] = 100;
     dr_hit(DR_OHAT, 127);
     run(10, 0);
     dr_hit(DR_CHAT, 127);
@@ -163,10 +314,10 @@ int main(void)
 
     /* loud pattern stays inside the range */
     reset();
-    dr.level[0] = dr.level[1] = dr.level[2] = dr.level[3] = 100;
+    for (p = 0; p < DR_N; p++) dr.level[p] = 100;
     {
         int q, k;
-        for (q = 0; q < 4; q++)
+        for (q = 0; q < (int)DR_N; q++)
             for (k = 0; k < 16; k++)
                 dr.st[q][k].mode = DM_ON;
     }
@@ -269,7 +420,7 @@ int main(void)
             int ghost = 0, ratchet = 0, hard = 0, q, k;
             reset();
             dr_load_preset(n);
-            for (q = 0; q < 4; q++)
+            for (q = 0; q < (int)DR_N; q++)
                 for (k = 0; k < 16; k++) {
                     const dr_step_t *s = &dr.st[q][k];
                     ghost += s->mode && s->vel == DV_GHOST;

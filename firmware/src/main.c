@@ -104,11 +104,11 @@ static void state_unpack(uint32_t w)
 }
 
 /* The saved state (SAVE, the editor's STORE): one blob in the patch store (patchstore.c), the whole state of the panel:
- *   0 0xB2  1 version 4  2..5 the length of each voice's patch (u16)  6.. the arpeggiators' settings (ARP_PACK bytes each)
+ *   0 0xB2  1 version 5  2..5 the length of each voice's patch (u16)  6.. the arpeggiators' settings (ARP_PACK bytes each)
  *   then the patches as they run now (parameter edits included), then the tail: the MIDI channels (2), the LED mode, the
  *   mixer levels (2), the mute bits, then the drum machine (dr_pack).
  * With the header's words: octave and settings (state_pack), the selected module of each voice (byte per voice in word 1) and
- * the preset of each (word 2). Version 3 (the same without the drums) and version 2 (four voices, voices 3 and 4 dropped) are still read; so is version 1 (two
+ * the preset of each (word 2). Version 4 (the drums with four parts and a decay each) and version 3 (the same without the drums) and version 2 (four voices, voices 3 and 4 dropped) are still read; so is version 1 (two
  * voices, before the four-voice firmware): its lengths are 2..5, its arpeggiators follow at 6, its tail is the two
  * channels and the LED mode. An even older record holds just voice 1's
  * patch (starts with 0xA1). */
@@ -134,9 +134,10 @@ static void arp_unpack(uint32_t v, const uint8_t *d)
     arp_p = keep;
 }
 
-/* The drum machine (version 4 of the blob, after the tail): the step matrix (mode, volume, condition), levels, decays, length, pattern number, tempo, MIDI
- * channel, mixer level and mute. */
-#define DRUM_PACK (2u * DR_N * DR_STEPS + 2u * DR_N + 1u + 1u + 2u + 1u + 2u)
+/* The drum machine (versions 4 and 5 of the blob, after the tail): the step matrix (mode, volume, condition), levels, the controls (version 4: just the
+ * decay of each of the first four parts), length, pattern number, tempo, MIDI channel, mixer level and mute. Version 4 has four parts. */
+#define DRUM_PACK (2u * DR_N * DR_STEPS + DR_N + DR_N * DP_N + 1u + 1u + 2u + 1u + 2u)
+#define DRUM_PACK_V4 (2u * 4u * DR_STEPS + 4u + 4u + 1u + 1u + 2u + 1u + 2u)
 static void dr_pack(uint8_t *d)
 {
     uint32_t p, i, n = 0;
@@ -148,7 +149,8 @@ static void dr_pack(uint8_t *d)
     for (p = 0; p < DR_N; p++)
         d[n++] = dr.level[p];
     for (p = 0; p < DR_N; p++)
-        d[n++] = dr.decay[p];
+        for (i = 0; i < DP_N; i++)
+            d[n++] = dr.pr[p][i];
     d[n++] = dr.steps;
     d[n++] = dr.preset;
     d[n++] = (uint8_t)dr.bpm;
@@ -158,19 +160,25 @@ static void dr_pack(uint8_t *d)
     d[n++] = mix_mute[DRUM_V];
 }
 
-static void dr_unpack(const uint8_t *d)
+static void dr_unpack(const uint8_t *d, uint32_t ver)      /* ver 4: four parts, only their decay; clap and cowbell stay at the defaults */
 {
-    uint32_t p, i, n = 0;
-    for (p = 0; p < DR_N; p++)
+    uint32_t p, i, parts = ver == 4u ? 4u : DR_N, n = 0;
+    for (p = 0; p < parts; p++)
         for (i = 0; i < DR_STEPS; i++, n += 2u) {
             dr.st[p][i].mode = d[n] & 7u;
             dr.st[p][i].vel = d[n] >> 3 & 3u;
             dr.st[p][i].cond = d[n + 1u];
         }
-    for (p = 0; p < DR_N; p++)
+    for (p = 0; p < parts; p++)
         dr.level[p] = d[n++];
-    for (p = 0; p < DR_N; p++)
-        dr.decay[p] = d[n++];
+    if (ver == 4u) {
+        for (p = 0; p < 4u; p++)
+            dr.pr[p][DP_DECAY] = d[n++];
+    } else {
+        for (p = 0; p < DR_N; p++)
+            for (i = 0; i < DP_N; i++)
+                dr.pr[p][i] = d[n++];
+    }
     dr.steps = d[n++];
     dr.preset = d[n++];
     dr.bpm = (uint16_t)(d[n] | d[n + 1u] << 8);
@@ -194,7 +202,7 @@ static uint32_t blob_build(void)                /* 0 if it does not fit */
     if (total > PS_MAX)
         return 0;
     blob[0] = BLOB_MAGIC;
-    blob[1] = 4;
+    blob[1] = 5;
     for (v = 0; v < ENG_VOICES; v++) {
         blob[2u + 2u * v] = (uint8_t)m1_cur_lenv[v];
         blob[3u + 2u * v] = (uint8_t)(m1_cur_lenv[v] >> 8);
@@ -413,7 +421,7 @@ static int boot_blob(const uint8_t *b, uint32_t len)    /* the saved state (blob
 {
     enum { SV_MAX = 4 };                                /* the most voices a record can hold (version 2) */
     uint32_t nv = b[1] == 2u ? 4u : 2u, hdr = 2u + 2u * nv, at = hdr + nv * ARP_PACK, v, l[SV_MAX] = {0, 0, 0, 0}, total, rv;
-    if (len < at || (b[1] < 1u || b[1] > 4u))
+    if (len < at || (b[1] < 1u || b[1] > 5u))
         return -1;
     for (v = 0, total = at; v < nv; v++) {
         l[v] = (uint32_t)b[2u + 2u * v] | (uint32_t)b[3u + 2u * v] << 8;
@@ -458,8 +466,10 @@ static int boot_blob(const uint8_t *b, uint32_t len)    /* the saved state (blob
                 mix_mute[v] = t[2u * nv + 1u] >> v & 1u;
             }
             cfg.leds = t[nv] > 2u ? 2u : t[nv];
-            if (b[1] == 4u && left >= 2u * nv + 2u + DRUM_PACK)
-                dr_unpack(t + 2u * nv + 2u);
+            if (b[1] == 5u && left >= 2u * nv + 2u + DRUM_PACK)
+                dr_unpack(t + 2u * nv + 2u, 5u);
+            else if (b[1] == 4u && left >= 2u * nv + 2u + DRUM_PACK_V4)
+                dr_unpack(t + 2u * nv + 2u, 4u);
         }
     }
     for (v = 0; v < rv; v++)
@@ -744,7 +754,7 @@ static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F
     ignore &= raw;
     now = raw & ~ignore;
     if (dsel) {                                     /* the drums: the keys are step buttons (drum_ui.c), they play no notes */
-        dr_keys(now, !page || page == 1u);          /* (the edge memory follows the keys on every page) */
+        dr_keys(now, page <= 2u);          /* (the edge memory follows the keys on every page) */
         prev = 0;
         return;
     }
@@ -795,7 +805,7 @@ static void leds_arp(void)
         fm1_led_breath[8] |= 2u;
     else
         fm1_led_breath[8] &= (uint8_t)~2u;
-    fm1_led_key(BTN_ARP, page == 1u);
+    fm1_led_key(BTN_ARP, page == 1u || (dsel && page == 2u));
     fm1_led_key(BTN_SEQ, page == 2u);
     fm1_led_key(BTN_LFO, page == 3u);
     fm1_led_key(BTN_SEL, dsel || eng_voice() != 0u);   /* lit while another voice than 1 is selected */
@@ -971,7 +981,7 @@ static void buttons_poll(void)
     if (p & (1u << BTN_GLO))
         page_set(PAGE_MIXER);
     if (dsel && (p & (1u << BTN_ARP)))
-        page_set(1);                                /* the drums' SOUND page (the same button goes back to the matrix) */
+        page_set(page == 1u || page == 2u ? 2u : 1u);   /* the drums: matrix -> SOUND -> MIX (the same button again) -> matrix */
     else if (dsel && (p & ((1u << BTN_SEQ) | (1u << BTN_LFO))))
         ui_msg("NO ARP ON DRUMS", 1000);
     else if (p & (1u << BTN_ARP))
@@ -1095,6 +1105,7 @@ static void fm1_main(void)
             }
             au_step_poll(page);
             dr_step_poll();
+            key_leds();
             cpu_poll();
         }
         {   /* OCT- + OCT+ (matrix buttons 0 and 1) held 5 s: UBOOT, as in Felucca */

@@ -27,6 +27,13 @@ static const uint8_t MIX_KEY_BIT[PVOICES] = {1, 3, 5};
 static uint8_t mix_vol[PVOICES] = {100, 100, 100};   /* percent, square law (so the lower half has some travel) */
 static uint8_t mix_mute[PVOICES];
 
+/* The drum machine on the keys (key n = 0 F3 .. 26 G5): the 16 steps are the 16 white keys, the 6 parts the black keys C#4 D#4 F#4 G#4 A#4 C#5
+ * (the mute keys F#3 G#3 A#3 are the lowest black ones, so the three groups never meet) */
+static const uint8_t DR_STEP_KEY[16] = {0, 2, 4, 6, 7, 9, 11, 12, 14, 16, 18, 19, 21, 23, 24, 26};
+static const uint8_t DR_PART_KEY[6] = {8, 10, 13, 15, 17, 20};
+
+static uint8_t kled_dirty = 1;                             /* the key LEDs need writing (key_leds) */
+
 static void mix_apply(uint32_t v)
 {
     uint32_t p = mix_vol[v];
@@ -35,7 +42,48 @@ static void mix_apply(uint32_t v)
         eng_voice_gain(v, g);
     else
         dr_gain = g;                                       /* the drums */
-    fm1_led_key(14u + MIX_KEY_BIT[v], mix_mute[v]);        /* the mute key's LED is lit while its voice is muted */
+    kled_dirty = 1;                                        /* the mute key's LED is lit while its voice is muted (key_leds) */
+}
+
+static void key_dim(uint32_t id, int on)                   /* the HAL's dim glow of a key's LED */
+{
+    uint32_t p, r;
+    for (p = 0; p < FM1_NCOL; p++)
+        for (r = 1; r < 5u; r++)
+            if (FM1_KEYMAP[r][p] == (int8_t)id) {
+                if (on)
+                    fm1_led_dim[p] |= (uint8_t)(1u << r);
+                else
+                    fm1_led_dim[p] &= (uint8_t)~(1u << r);
+            }
+}
+
+/* The LEDs of the keys: a muted voice's key (MIX_KEY_BIT) is lit; while the drums are selected the white keys are the 16 steps
+ * of the selected part: a switched on step is lit, the beats (steps 1, 5, 9, 13) glow dimly (MENU > LEDS permitting). Every pass of the
+ * main loop; it writes only when the picture changed. */
+static void key_leds(void)
+{
+    static uint32_t lit_was, dim_was;
+    uint32_t lit = 0, dim = 0, i;
+    for (i = 0; i < PVOICES; i++)
+        if (mix_mute[i])
+            lit |= 1u << MIX_KEY_BIT[i];
+    if (dsel)
+        for (i = 0; i < dr.steps; i++) {
+            if (dr.st[dr.part][i].mode)
+                lit |= 1u << DR_STEP_KEY[i];
+            else if (!(i & 3u) && cfg.leds)
+                dim |= 1u << DR_STEP_KEY[i];
+        }
+    if (!kled_dirty && lit == lit_was && dim == dim_was)
+        return;
+    kled_dirty = 0;
+    lit_was = lit;
+    dim_was = dim;
+    for (i = 0; i < 27u; i++) {
+        fm1_led_key(14u + i, (int)(lit >> i & 1u));
+        key_dim(14u + i, (int)(dim >> i & 1u));
+    }
 }
 
 static void mix_apply_all(void)
