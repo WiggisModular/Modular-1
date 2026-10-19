@@ -2,12 +2,30 @@
 
 ## Unreleased
 
+## 1.1.0 (firmware `M1-1.1.0`, app 1.1.0)
+
 ### Added
+- **Drum machine** as the third voice (SEL: voice 1, voice 2, drums): 16 steps with a trigger type per step (ON, ratchet 2-4, flam), a condition (probability or A:B) and a volume (ghost, normal, hard); 8 factory patterns with ghost notes and ratchets (PRESET knob or MIDI program change); PLAY starts and stops it, it follows MIDI clock; MIDI channel 10 (GM notes 36/38/42/46/39/56); its own mixer row.
+- Six synthesized drum parts: kick, snare, closed hat, open hat, **clap** and **cowbell**. Every part has four controls on the SOUND page: tune, drive, decay and a fourth (kick: frequency delay, snare and hats: noise amount, clap: spread, cowbell: tone). The MIX page (ARP button again) has the levels, the tempo and the pattern length.
+- The 16 steps are the 16 white keys; the six parts are the black keys C#4 D#4 F#4 G#4 A#4 C#5. A switched-on step lights its key, the beats (steps 1, 5, 9, 13) glow dimly.
+- **Simulator tab**: the firmware runs on an emulated FM-1 (fm1-emu, MIT) in the web app.
+- **Chip oscillator** module (NES and Game Boy sounds with the fast chip arpeggio) and two factory patches; switches show OFF/ON on the LCD. The oscillator morphs continuously between sine, triangle, saw and square.
+- A new set of 32 factory patches.
 - MELODY page: the scale shows its number of notes, e.g. `Maj Pentatonic (6)`.
 - Arpeggiator modes (K1 on the MELODY page, appended after RANDOM so stored states keep their mode): **DOUBLE** (up and down, every note twice), **WAVE** (overlapping triples 1 2 1, 2 3 2, 3 4 3 ... up, then the mirror image down), **JUMPS** (1 n 2 n-1 3 n-2 ... to the middle and back, the turning notes once).
 
+### Changed
+- Two patch voices instead of four, to make room for the drums.
+- The drums are much louder (every part peaks near 0.95 at level 100; the hats were far too quiet), the default drum level is 90.
+- The saved state is version 5 (six drum parts and their controls); states saved by 1.0.x and by the earlier drum versions still load (clap and cowbell at their defaults).
+
+### Fixed
+- The cursor frame of a drum matrix cell was left on the display when the cursor moved on.
+- Long drum decays end instead of ringing on; the Game Boy short noise cannot lock at zero; the drum keys' edge memory follows every page.
+- MIDI clock check: only two arpeggiators exist.
+
 ### Not verified
-- Host-tested only (`tools/arp_test.sh`); not flashed, the mode names are not seen on the display.
+- Host-tested (`tools/arp_test.sh`, `tools/golden.sh`) and previewed on the host only. The two voices, the drums, their LEDs and key layout, and the simulator tab have not been run on a real FM-1, and the CPU use of two voices plus drums has not been measured.
 
 ## 1.0.3 (firmware `M1-1.0.3`, app 1.0.3)
 
