@@ -15,6 +15,10 @@ Copied files, to be changed only as part of Modular-1's own work:
 
 Every one of these keeps its original `SPDX-License-Identifier` and copyright header.
 
+## fm1-emu (MIT)
+
+The Simulator tab runs the firmware on the FM-1 emulator by Joakim Eriksson, MIT: <https://github.com/joakimeriksson/fm1-emu>. Its web build (the page, its scripts and `fm1_web.wasm`) is copied unchanged to `web/public/sim/` by `tools/build_simulator.sh` (`web/scripts/sync-simulator.mjs`), together with its licence (`LICENSE-fm1-emu-MIT.txt`) and `SOURCE.txt` naming the commit it was built from; only `firmwares.json` there is ours. MIT is compatible with this repository's GPL-3.0-only; the emulator's own licence stays with its files.
+
 ## JieLi SDK files (Apache-2.0)
 
 Packages made by `tools/build.py` embed three files from the JieLi AC79 SDK (`uboot.boot`, `cfg_tool.bin`, `cfg/eq_cfg_hw.bin`), Apache-2.0. They are not in this repository as files, but the prebuilt package that the web app bundles (`web/public/firmware/modular-1.fwsc`, made by `tools/build.py` and `npm run firmware`, published on GitHub Pages) contains them, so the licence texts (`LICENSE-GPL-3.0.txt`, `LICENSE-Apache-2.0.txt`) are published next to it and linked from the Flash tab. Ship `LICENSES/Apache-2.0.txt` with every package. The other texts in `LICENSES/` belong to Felucca's own bundled material (fonts, DSP ports) and apply only to files not copied here; they are kept so any later copy stays correctly attributed.

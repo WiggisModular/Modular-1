@@ -5,6 +5,7 @@ import { DeviceLink } from './device';
 import { Editor } from './editor';
 import { buildBankTab } from './bank';
 import { buildFlashTab } from './flasher';
+import { buildSimTab } from './simulator';
 import { attachKeyboard, attachMidi } from './input';
 import { DEFS } from './modules';
 import { emptyPatch, validatePatch, type Patch } from './patch';
@@ -202,6 +203,7 @@ buildBankTab($('tab-presets'), device, () => editor.patch, (msg) => {
   devStatus(msg);
   for (const id of ['dev-live', 'dev-send', 'dev-store']) $<HTMLInputElement>(id).disabled = false;
 });
+const showSim = buildSimTab($('tab-sim'));
 buildFlashTab($('tab-flash'));
 $('tab-about').innerHTML = `
   <div class="card"><h2>Modular-1</h2>
@@ -213,8 +215,9 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('#tabs button')) {
     for (const x of document.querySelectorAll<HTMLButtonElement>('#tabs button')) x.setAttribute('aria-selected', String(x === b));
     for (const t of document.querySelectorAll<HTMLElement>('.tab')) t.hidden = t.id !== `tab-${currentTab}`;
     if (currentTab === 'patch') editor.drawCables();
+    if (currentTab === 'sim') showSim();
   };
 }
 
-// open the tab named in the address (#presets, #flash, #about)
+// open the tab named in the address (#presets, #sim, #flash, #about)
 document.querySelector<HTMLButtonElement>(`#tabs button[data-tab="${location.hash.slice(1)}"]`)?.click();

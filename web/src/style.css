@@ -77,3 +77,5 @@ progress { width: 100%; }
 .bank-row > span:first-child:not(.slot) { flex: 1; }
 .bank-row .slot { color: var(--muted); font-variant-numeric: tabular-nums; width: 1.6em; }
 .bank-row button { padding: 0 8px; line-height: 1.5; }
+
+.sim-frame { width: 100%; height: 860px; max-height: 90vh; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
