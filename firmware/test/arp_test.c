@@ -96,6 +96,18 @@ int main(void)
               notes[0], notes[1], notes[2], notes[3], notes[4]);
     }
 
+    /* DOUBLE: every note twice, bouncing, the ends once in the bounce */
+    reset();
+    arp_c.mode = ARP_DOUBLE;
+    arp_c.scale = 40;
+    arp_play = 1;
+    run_blocks(43 * 12 + 5);
+    {
+        static const int want[] = {60, 60, 64, 64, 67, 67, 64, 64, 60, 60, 64, 64};
+        for (i = 0; i < 12; i++)
+            CHECK(notes[i] == want[i], "DOUBLE %d = %d want %d", i, notes[i], want[i]);
+    }
+
     /* octaves: 3 octaves of a triad, UP */
     reset();
     arp_c.scale = 40;

@@ -7,10 +7,10 @@
  * called by the audio ISR once per half buffer before the engine renders, copies the settings when they changed, and
  * is the only place that touches the engine, so the clock is sample-locked and nothing races the render. */
 
-enum { ARP_UP, ARP_DOWN, ARP_INCLUDE, ARP_EXCLUDE, ARP_TURING, ARP_WALK, ARP_RANDOM, ARP_NMODES };
+enum { ARP_UP, ARP_DOWN, ARP_INCLUDE, ARP_EXCLUDE, ARP_TURING, ARP_WALK, ARP_RANDOM, ARP_DOUBLE, ARP_NMODES };
 enum { RATE_1_1, RATE_1_2, RATE_1_4, RATE_1_4T, RATE_1_8, RATE_1_8T, RATE_1_16, RATE_1_16T, RATE_1_32, ARP_NRATES };
 
-static const char *const ARP_MODE_NAME[ARP_NMODES] = {"UP", "DOWN", "INCLUDE", "EXCLUDE", "TURING", "WALK", "RANDOM"};
+static const char *const ARP_MODE_NAME[ARP_NMODES] = {"UP", "DOWN", "INCLUDE", "EXCLUDE", "TURING", "WALK", "RANDOM", "DOUBLE"};
 static const char *const ARP_RATE_NAME[ARP_NRATES] = {"1/1", "1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32"};
 static const uint8_t ARP_RATE_TICKS[ARP_NRATES] = {96, 48, 24, 16, 12, 8, 6, 4, 3};   /* 24 ppqn ticks per step */
 
@@ -280,6 +280,22 @@ static uint32_t arp_next_index(void)
             AR.dir = 1;
         }
         AR.idx = next;
+        break;
+    case ARP_DOUBLE:                    /* up and down, the end notes once, every note twice: 1 1 2 2 3 3 2 2 1 1 2 2 ... */
+        if (AR.pending_repeat) {
+            AR.pending_repeat = 0;
+            break;
+        }
+        AR.pending_repeat = 1;
+        next = AR.idx + AR.dir;
+        if (next >= (int32_t)size) {
+            next = (int32_t)size - 2;
+            AR.dir = -1;
+        } else if (next < 0) {
+            next = 1;
+            AR.dir = 1;
+        }
+        AR.idx = next < 0 ? 0 : next > (int32_t)size - 1 ? (int32_t)size - 1 : next;
         break;
     case ARP_WALK: {                    /* a random step of one note, sometimes two or three; bounces off the ends */
         int32_t dir = arp_rnd(2) == 0 ? -1 : 1;
