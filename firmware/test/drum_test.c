@@ -46,6 +46,7 @@ static void reset(void)
     memset(DV, 0, sizeof DV);
     memset(&DR, 0, sizeof DR);
     memset((void *)dr_req, 0, sizeof dr_req);
+    memset((void *)dr_hits, 0, sizeof dr_hits);
     DR.seed = 0x2545F491u;
     dr_defaults();
     dr_play = 0;
@@ -155,20 +156,116 @@ int main(void)
     /* loud pattern stays inside the range */
     reset();
     dr.level[0] = dr.level[1] = dr.level[2] = dr.level[3] = 100;
-    dr.pat[0] = dr.pat[1] = dr.pat[2] = dr.pat[3] = 0xFFFF;
+    {
+        int q, k;
+        for (q = 0; q < 4; q++)
+            for (k = 0; k < 16; k++)
+                dr.st[q][k].mode = DM_ON;
+    }
     dr_play = 1;
     run(43 * 4, &pk);
     CHECK(pk <= ENG_ONE, "peak %d", pk);
 
+    /* the step matrix: only the kick's first step is on, steps = 16 so one pass is 16 * 43 blocks */
+#define ONLY(mode_, cond_, vel_) do { int q_, k_; reset(); dr.bpm = 120; for (q_ = 0; q_ < 4; q_++) for (k_ = 0; k_ < 16; k_++) dr.st[q_][k_].mode = DM_OFF; \
+    dr.st[DR_KICK][0].mode = (mode_); dr.st[DR_KICK][0].cond = (cond_); dr.st[DR_KICK][0].vel = (vel_); } while (0)
+    ONLY(DM_ON, 0, DV_NORMAL);
+    dr_play = 1;
+    run(43 * 16 - 3, 0);
+    CHECK(dr_hits[DR_KICK] == 1, "ON: %d hits", (int)dr_hits[DR_KICK]);
+    ONLY(DM_R2, 0, DV_NORMAL);
+    dr_play = 1;
+    run(43 * 16 - 3, 0);
+    CHECK(dr_hits[DR_KICK] == 2, "RATCHET 2: %d hits", (int)dr_hits[DR_KICK]);
+    ONLY(DM_R3, 0, DV_NORMAL);
+    dr_play = 1;
+    run(43 * 16 - 3, 0);
+    CHECK(dr_hits[DR_KICK] == 3, "RATCHET 3: %d hits", (int)dr_hits[DR_KICK]);
+    ONLY(DM_R4, 0, DV_NORMAL);
+    dr_play = 1;
+    run(43 * 16 - 3, 0);
+    CHECK(dr_hits[DR_KICK] == 4, "RATCHET 4: %d hits", (int)dr_hits[DR_KICK]);
+    ONLY(DM_FLAM, 0, DV_NORMAL);
+    dr_play = 1;
+    run(3, 0);
+    CHECK(dr_hits[DR_KICK] == 1, "FLAM: the grace note first, %d hits", (int)dr_hits[DR_KICK]);
+    run(10, 0);
+    CHECK(dr_hits[DR_KICK] == 2, "FLAM: the hit 20 ms later, %d hits", (int)dr_hits[DR_KICK]);
+    /* ratchet hits are spread over the step: the second hit of a ratchet 2 is half a step in (21 blocks) */
+    ONLY(DM_R2, 0, DV_NORMAL);
+    dr_play = 1;
+    run(15, 0);
+    CHECK(dr_hits[DR_KICK] == 1, "RATCHET 2 at 15 blocks: %d", (int)dr_hits[DR_KICK]);
+    run(12, 0);
+    CHECK(dr_hits[DR_KICK] == 2, "RATCHET 2 at 27 blocks: %d", (int)dr_hits[DR_KICK]);
+
+    /* volume: ghost < normal < hard */
+    {
+        int32_t g, n, h;
+        ONLY(DM_ON, 0, DV_GHOST);
+        dr_play = 1;
+        run(3, &g);
+        ONLY(DM_ON, 0, DV_NORMAL);
+        dr_play = 1;
+        run(3, &n);
+        ONLY(DM_ON, 0, DV_HARD);
+        dr_play = 1;
+        run(3, &h);
+        CHECK(g * 2 < n && n < h, "volumes ghost %d normal %d hard %d", g, n, h);
+    }
+
+    /* conditions, with a pattern length of 1 so every step is a pass: 1:1 plays every other pass, 2:1 two of three, 1:2 one of three */
+    ONLY(DM_ON, DC_PROB + 0, DV_NORMAL);                /* 1:1 */
+    dr.steps = 1;
+    dr_play = 1;
+    run(43 * 20 + 5, 0);
+    CHECK(dr_hits[DR_KICK] == 10, "1:1 over 20 passes: %d", (int)dr_hits[DR_KICK]);
+    ONLY(DM_ON, DC_PROB + 4, DV_NORMAL);                /* 2:1 */
+    dr.steps = 1;
+    dr_play = 1;
+    run(43 * 18 + 5, 0);
+    CHECK(dr_hits[DR_KICK] == 12, "2:1 over 18 passes: %d", (int)dr_hits[DR_KICK]);
+    ONLY(DM_ON, DC_PROB + 1, DV_NORMAL);                /* 1:2 */
+    dr.steps = 1;
+    dr_play = 1;
+    run(43 * 18 + 5, 0);
+    CHECK(dr_hits[DR_KICK] == 6, "1:2 over 18 passes: %d", (int)dr_hits[DR_KICK]);
+    ONLY(DM_ON, DC_PROB + 3 * 4 + 3, DV_NORMAL);        /* 4:4 */
+    dr.steps = 1;
+    dr_play = 1;
+    run(43 * 16 + 5, 0);
+    CHECK(dr_hits[DR_KICK] == 8, "4:4 over 16 passes: %d", (int)dr_hits[DR_KICK]);
+    ONLY(DM_ON, 5, DV_NORMAL);                          /* 10 % */
+    dr.steps = 1;
+    dr_play = 1;
+    run(43 * 400 + 5, 0);
+    CHECK(dr_hits[DR_KICK] > 15 && dr_hits[DR_KICK] < 70, "10%% over 400 passes: %d", (int)dr_hits[DR_KICK]);
+    ONLY(DM_ON, 3, DV_NORMAL);                          /* 50 % */
+    dr.steps = 1;
+    dr_play = 1;
+    run(43 * 400 + 5, 0);
+    CHECK(dr_hits[DR_KICK] > 150 && dr_hits[DR_KICK] < 250, "50%% over 400 passes: %d", (int)dr_hits[DR_KICK]);
+    ONLY(DM_ON, 0, DV_NORMAL);                          /* always */
+    dr.steps = 1;
+    dr_play = 1;
+    run(43 * 50 + 5, 0);
+    CHECK(dr_hits[DR_KICK] == 50 + 0 || dr_hits[DR_KICK] == 51, "always over 50 passes: %d", (int)dr_hits[DR_KICK]);
+
     /* panel side: presets and clamping */
     reset();
+    memset((void *)dr_hits, 0, sizeof dr_hits);
     dr_load_preset(3);
-    CHECK(dr.preset == 3 && dr.pat[DR_KICK] == 0x1111 && dr.bpm == 122, "preset 3");
+    CHECK(dr.preset == 3 && dr.st[DR_KICK][4].mode == DM_ON && dr.st[DR_KICK][1].mode == DM_OFF && dr.bpm == 122, "preset 3");
     dr.steps = 99;
     dr.bpm = 5;
     dr.level[1] = 200;
+    dr.st[1][2].mode = 99;
+    dr.st[1][2].cond = 99;
+    dr.st[1][2].vel = 9;
+    dr.cur = 40;
     dr_fix();
     CHECK(dr.steps == 16 && dr.bpm == 40 && dr.level[1] == 100, "dr_fix");
+    CHECK(dr.st[1][2].mode == DM_OFF && dr.st[1][2].cond == 0 && dr.st[1][2].vel == DV_NORMAL && dr.cur == 0, "dr_fix of the steps");
 
     printf(fails ? "drum tests FAILED (%d)\n" : "drum tests passed\n", fails);
     return fails != 0;

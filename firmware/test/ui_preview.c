@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 morgulbrut */
 /* Renders the device's LCD (firmware/src/ui.c) on the host into a PPM image, to look at the layout without a device.
- *   ui_preview OUT.ppm PRESET_INDEX [SELECTED_MODULE [OCTAVE [PAGE [STEP]]]]   (PAGE 9: the drum machine)
+ *   ui_preview OUT.ppm PRESET_INDEX [SELECTED_MODULE [OCTAVE [PAGE [STEP]]]]   (PAGE 9: the drum matrix, 8: its sound page)
  * tools/ui_preview.sh converts the image to PNG. */
 #include <stdint.h>
 #include <stdio.h>
@@ -76,10 +76,20 @@ int main(int argc, char **argv)
     sel = argc > 3 ? (uint32_t)atoi(argv[3]) : 0u;
     octave = argc > 4 ? atoi(argv[4]) : 0;
     page = argc > 5 ? (uint8_t)atoi(argv[5]) : 0u;          /* 1..3: the arpeggiator pages; 9: the drums (STEP = the playhead) */
-    if (page == 9u) {
-        page = 0;
+    if (page == 9u || page == 8u) {                         /* 9: the drum matrix, 8: its sound page (STEP = the playhead) */
+        page = page == 8u ? 1u : 0u;
         dsel = 1;
         dr_defaults();
+        dr.st[DR_KICK][6].mode = DM_R3;                     /* some of everything, to look at */
+        dr.st[DR_KICK][8].vel = DV_HARD;
+        dr.st[DR_SNARE][10].mode = DM_FLAM;
+        dr.st[DR_SNARE][12].vel = DV_GHOST;
+        dr.st[DR_CHAT][3].mode = DM_R2;
+        dr.st[DR_CHAT][3].cond = DC_PROB + 4;
+        dr.st[DR_CHAT][5].mode = DM_ON;
+        dr.st[DR_CHAT][5].cond = 3;
+        dr.part = DR_SNARE;
+        dr.cur = 10;
         dr_play = argc > 6;
         dr_step_ui = argc > 6 ? (uint8_t)atoi(argv[6]) : 0u;
         argc = 6;

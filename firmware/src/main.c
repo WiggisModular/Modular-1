@@ -134,16 +134,17 @@ static void arp_unpack(uint32_t v, const uint8_t *d)
     arp_p = keep;
 }
 
-/* The drum machine (version 4 of the blob, after the tail): the patterns, levels, decays, length, pattern number, tempo, MIDI
+/* The drum machine (version 4 of the blob, after the tail): the step matrix (mode, volume, condition), levels, decays, length, pattern number, tempo, MIDI
  * channel, mixer level and mute. */
-#define DRUM_PACK (2u * DR_N + 2u * DR_N + 1u + 1u + 2u + 1u + 2u)
+#define DRUM_PACK (2u * DR_N * DR_STEPS + 2u * DR_N + 1u + 1u + 2u + 1u + 2u)
 static void dr_pack(uint8_t *d)
 {
-    uint32_t p, n = 0;
-    for (p = 0; p < DR_N; p++) {
-        d[n++] = (uint8_t)dr.pat[p];
-        d[n++] = (uint8_t)(dr.pat[p] >> 8);
-    }
+    uint32_t p, i, n = 0;
+    for (p = 0; p < DR_N; p++)
+        for (i = 0; i < DR_STEPS; i++) {                /* two bytes a step: mode | volume << 3, condition */
+            d[n++] = (uint8_t)(dr.st[p][i].mode | dr.st[p][i].vel << 3);
+            d[n++] = dr.st[p][i].cond;
+        }
     for (p = 0; p < DR_N; p++)
         d[n++] = dr.level[p];
     for (p = 0; p < DR_N; p++)
@@ -159,9 +160,13 @@ static void dr_pack(uint8_t *d)
 
 static void dr_unpack(const uint8_t *d)
 {
-    uint32_t p, n = 0;
-    for (p = 0; p < DR_N; p++, n += 2u)
-        dr.pat[p] = (uint16_t)(d[n] | d[n + 1u] << 8);
+    uint32_t p, i, n = 0;
+    for (p = 0; p < DR_N; p++)
+        for (i = 0; i < DR_STEPS; i++, n += 2u) {
+            dr.st[p][i].mode = d[n] & 7u;
+            dr.st[p][i].vel = d[n] >> 3 & 3u;
+            dr.st[p][i].cond = d[n + 1u];
+        }
     for (p = 0; p < DR_N; p++)
         dr.level[p] = d[n++];
     for (p = 0; p < DR_N; p++)
@@ -739,7 +744,7 @@ static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F
     ignore &= raw;
     now = raw & ~ignore;
     if (dsel) {                                     /* the drums: the keys are step buttons (drum_ui.c), they play no notes */
-        if (!page)
+        if (!page || page == 1u)
             dr_keys(now);
         prev = 0;
         return;
@@ -966,7 +971,9 @@ static void buttons_poll(void)
     }
     if (p & (1u << BTN_GLO))
         page_set(PAGE_MIXER);
-    if (dsel && (p & ((1u << BTN_ARP) | (1u << BTN_SEQ) | (1u << BTN_LFO))))
+    if (dsel && (p & (1u << BTN_ARP)))
+        page_set(1);                                /* the drums' SOUND page (the same button goes back to the matrix) */
+    else if (dsel && (p & ((1u << BTN_SEQ) | (1u << BTN_LFO))))
         ui_msg("NO ARP ON DRUMS", 1000);
     else if (p & (1u << BTN_ARP))
         page_set(1);
