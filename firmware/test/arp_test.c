@@ -108,6 +108,18 @@ int main(void)
             CHECK(notes[i] == want[i], "DOUBLE %d = %d want %d", i, notes[i], want[i]);
     }
 
+    /* WAVE: triples b b+1 b going up, the mirror image going down */
+    reset();
+    arp_c.mode = ARP_WAVE;
+    arp_c.scale = 40;                   /* 0 4 7 */
+    arp_play = 1;
+    run_blocks(43 * 15 + 5);
+    {
+        static const int want[] = {60, 64, 60, 64, 67, 64, 67, 64, 67, 64, 60, 64, 60, 64, 60};
+        for (i = 0; i < 15; i++)
+            CHECK(notes[i] == want[i], "WAVE %d = %d want %d", i, notes[i], want[i]);
+    }
+
     /* octaves: 3 octaves of a triad, UP */
     reset();
     arp_c.scale = 40;

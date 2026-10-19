@@ -7,10 +7,10 @@
  * called by the audio ISR once per half buffer before the engine renders, copies the settings when they changed, and
  * is the only place that touches the engine, so the clock is sample-locked and nothing races the render. */
 
-enum { ARP_UP, ARP_DOWN, ARP_INCLUDE, ARP_EXCLUDE, ARP_TURING, ARP_WALK, ARP_RANDOM, ARP_DOUBLE, ARP_NMODES };
+enum { ARP_UP, ARP_DOWN, ARP_INCLUDE, ARP_EXCLUDE, ARP_TURING, ARP_WALK, ARP_RANDOM, ARP_DOUBLE, ARP_WAVE, ARP_NMODES };
 enum { RATE_1_1, RATE_1_2, RATE_1_4, RATE_1_4T, RATE_1_8, RATE_1_8T, RATE_1_16, RATE_1_16T, RATE_1_32, ARP_NRATES };
 
-static const char *const ARP_MODE_NAME[ARP_NMODES] = {"UP", "DOWN", "INCLUDE", "EXCLUDE", "TURING", "WALK", "RANDOM", "DOUBLE"};
+static const char *const ARP_MODE_NAME[ARP_NMODES] = {"UP", "DOWN", "INCLUDE", "EXCLUDE", "TURING", "WALK", "RANDOM", "DOUBLE", "WAVE"};
 static const char *const ARP_RATE_NAME[ARP_NRATES] = {"1/1", "1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32"};
 static const uint8_t ARP_RATE_TICKS[ARP_NRATES] = {96, 48, 24, 16, 12, 8, 6, 4, 3};   /* 24 ppqn ticks per step */
 
@@ -124,6 +124,7 @@ typedef struct {
     int32_t idx;                        /* cursor of UP / DOWN / INCLUDE / EXCLUDE / WALK, -1 before the first step */
     int8_t dir;
     uint8_t pending_repeat, first;
+    uint32_t seq;                       /* steps taken by WAVE / JUMPS since the cursor reset */
     uint16_t turing;
     uint32_t rng;
 } arp_run_t;
@@ -204,6 +205,7 @@ static void arp_cursor_reset(void)
     AR.dir = 1;
     AR.pending_repeat = 0;
     AR.first = 1;
+    AR.seq = 0;
 }
 
 static void arp_pool_build(void)
@@ -297,6 +299,20 @@ static uint32_t arp_next_index(void)
         }
         AR.idx = next < 0 ? 0 : next > (int32_t)size - 1 ? (int32_t)size - 1 : next;
         break;
+    case ARP_WAVE: {                    /* overlapping up-down triples: 1 2 1 2 3 2 3 4 3 ..., then the mirror image down */
+        uint32_t period = 2u * (size - 1u), q = (AR.seq / 3u) % period, s = AR.seq % 3u, base;
+        AR.seq++;
+        if (size < 2u) {
+            AR.idx = 0;
+            break;
+        }
+        if (q < size - 1u)
+            base = q + (s == 1u ? 1u : 0u);
+        else
+            base = (2u * size - 2u - q) - (s == 1u ? 1u : 0u);
+        AR.idx = (int32_t)base;
+        break;
+    }
     case ARP_WALK: {                    /* a random step of one note, sometimes two or three; bounces off the ends */
         int32_t dir = arp_rnd(2) == 0 ? -1 : 1;
         int32_t mag = arp_rnd(100) < chaos / 2u ? (int32_t)(2u + arp_rnd(2)) : 1;
