@@ -3,9 +3,43 @@ import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, disconnect, emptyPatch, fromUnit, modulate, processingOrder, removeModule, toUnit, validatePatch } from './patch';
-import { PRESETS } from './presets';
+import { make, PRESETS } from './presets';
 
 const SR = 48000;
+
+/** a plain subtractive voice, not a factory preset (those change): panel, saw, envelope, filter, VCA, output (module 1 is the oscillator) */
+const testSaw = () =>
+  make('test saw', (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const o = add('osc', 0, 0, { wave: 2, level: 0.8 });
+    const env = add('adsr', 0, 0, { a: 0.01, d: 0.2, s: 0.7, r: 0.2 });
+    const f = add('filter', 0, 0, { cutoff: 3000, res: 0.1 });
+    const v = add('vca', 0, 0);
+    const out = add('output', 0, 0);
+    wire(kb, 'pitch', o, 'pitch');
+    wire(kb, 'gate', env, 'gate');
+    wire(o, 'out', f, 'in');
+    wire(f, 'lp12', v, 'in');
+    wire(env, 'env', v, 'cv');
+    wire(v, 'out', out, 'l');
+  });
+/** two sine operators: the modulator phase-modulates the carrier */
+const testFm = () =>
+  make('test fm', (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const mod = add('osc', 0, 0, { wave: 0, coarse: 12, level: 0.8 });
+    const car = add('osc', 0, 0, { wave: 0, pm: 3, level: 0.8 });
+    const env = add('adsr', 0, 0, { a: 0.01, d: 0.3, s: 0.7, r: 0.2 });
+    const v = add('vca', 0, 0);
+    const out = add('output', 0, 0);
+    wire(kb, 'pitch', mod, 'pitch');
+    wire(kb, 'pitch', car, 'pitch');
+    wire(kb, 'gate', env, 'gate');
+    wire(mod, 'out', car, 'pm');
+    wire(car, 'out', v, 'in');
+    wire(env, 'env', v, 'cv');
+    wire(v, 'out', out, 'l');
+  });
 
 function render(e: Engine, frames: number): { l: Float32Array; r: Float32Array } {
   const l = new Float32Array(frames);
@@ -57,7 +91,7 @@ describe('patch model', () => {
 
   it('validates JSON patches', () => {
     expect(() => validatePatch({ version: 2 }, DEFS)).toThrow();
-    const p = PRESETS['Subtractive saw']();
+    const p = testSaw();
     expect(validatePatch(JSON.parse(JSON.stringify(p)), DEFS).modules).toHaveLength(p.modules.length);
     const bad = JSON.parse(JSON.stringify(p));
     bad.cables[0].to.port = 'ghost';
@@ -92,7 +126,7 @@ describe('engine', () => {
 
   it('applies the ADSR: silent before the note, sounding while held, decaying after release', () => {
     const e = new Engine(SR);
-    e.load(PRESETS['Subtractive saw']());
+    e.load(testSaw());
     expect(rms(render(e, 4800).l)).toBeLessThan(1e-4);
     e.noteOn(48);
     expect(rms(render(e, 9600).l)).toBeGreaterThan(0.02);
@@ -292,7 +326,7 @@ describe('engine', () => {
 
   it('keeps running state when the patch is edited, but not output order assumptions', () => {
     const e = new Engine(SR);
-    const p = PRESETS['Subtractive saw']();
+    const p = testSaw();
     e.load(p);
     e.noteOn(48);
     render(e, 4800);
@@ -305,7 +339,7 @@ describe('engine', () => {
 
   it('FM changes the spectrum compared to the unmodulated carrier', () => {
     const e = new Engine(SR);
-    const p = PRESETS['Two-operator FM']();
+    const p = testFm();
     e.load(p);
     e.noteOn(60);
     const a = render(e, 8000).l;
@@ -321,7 +355,7 @@ describe('engine', () => {
 
   it('survives a feedback cable without NaNs', () => {
     const e = new Engine(SR);
-    const p = PRESETS['Subtractive saw']();
+    const p = testSaw();
     const vca = p.modules.find((m) => m.type === 'vca')!;
     const osc = p.modules.find((m) => m.type === 'osc')!;
     connect(p, DEFS, { module: vca.id, port: 'out' }, { module: osc.id, port: 'pm' });
