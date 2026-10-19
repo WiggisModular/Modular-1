@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 morgulbrut */
 /* Renders the device's LCD (firmware/src/ui.c) on the host into a PPM image, to look at the layout without a device.
- *   ui_preview OUT.ppm PRESET_INDEX [SELECTED_MODULE [OCTAVE [PAGE [STEP]]]]
+ *   ui_preview OUT.ppm PRESET_INDEX [SELECTED_MODULE [OCTAVE [PAGE [STEP]]]]   (PAGE 9: the drum machine)
  * tools/ui_preview.sh converts the image to PNG. */
 #include <stdint.h>
 #include <stdio.h>
@@ -46,14 +46,17 @@ static void lcd_sync(void) {}
 #include "../src/presets.h"
 #include "../src/font5x7.c"
 #include "../src/arp.c"
+#include "../src/drums.c"
 #include "../src/ui.c"
 #include "../src/arp_ui.c"
 static void fm1_led_key(uint32_t id, int on) { (void)id; (void)on; }
 static void leds_avail(void) {}
+static void leds_arp(void) {}
 static void leds_octave(void) {}
 static void uboot_now(void) {}
 static void defaults_now(void) {}
 #include "../src/menu.c"
+#include "../src/drum_ui.c"
 
 int main(int argc, char **argv)
 {
@@ -72,7 +75,15 @@ int main(int argc, char **argv)
     }
     sel = argc > 3 ? (uint32_t)atoi(argv[3]) : 0u;
     octave = argc > 4 ? atoi(argv[4]) : 0;
-    page = argc > 5 ? (uint8_t)atoi(argv[5]) : 0u;          /* 1..3: the arpeggiator pages */
+    page = argc > 5 ? (uint8_t)atoi(argv[5]) : 0u;          /* 1..3: the arpeggiator pages; 9: the drums (STEP = the playhead) */
+    if (page == 9u) {
+        page = 0;
+        dsel = 1;
+        dr_defaults();
+        dr_play = argc > 6;
+        dr_step_ui = argc > 6 ? (uint8_t)atoi(argv[6]) : 0u;
+        argc = 6;
+    }
     if (argc > 6) {                                         /* page 2: a playing step */
         arp_play = 1;
         arp_step_ui = (uint8_t)atoi(argv[6]);

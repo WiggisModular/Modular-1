@@ -8,9 +8,14 @@
  *   y  29  CPU                          y 120  K1..K4 rows        y 200 P1, P2 */
 #define C_BG 0x0000u
 #define C_FG 0xFFFFu
-/* the accent: each voice has its own colour (orange, purple) */
-static const uint16_t VOICE_COLOR[ENG_VOICES] = {0xFD20u, 0xA19Fu};
-#define C_ACC (VOICE_COLOR[eng_voice()])
+/* The panel's voices: the patch voices and, as the last one, the drum machine (drums.c, drum_ui.c). SEL steps through them.
+ * `dsel` is set while the drums are selected (eng_voice() then stays at the patch voice used last). */
+#define PVOICES (ENG_VOICES + 1u)
+#define DRUM_V ENG_VOICES
+static uint8_t dsel;
+/* the accent: each voice has its own colour (orange, purple, green for the drums) */
+static const uint16_t VOICE_COLOR[PVOICES] = {0xFD20u, 0xA19Fu, 0x7FE0u};
+#define C_ACC (VOICE_COLOR[dsel ? DRUM_V : eng_voice()])
 #define C_DIM 0x7BEFu
 #define C_RED 0xF800u
 
@@ -32,16 +37,17 @@ static struct {
     uint8_t leds;                       /* the idle buttons glow: 0 off, 1 dim low, 2 dim higher */
     uint8_t cpu_bar;                    /* the CPU load in the top bar */
     uint8_t accel;                      /* a knob turned fast steps 5 times as far */
-    uint8_t ch[ENG_VOICES];             /* the MIDI channel of each voice: 1..16, 0 all (omni) */
+    uint8_t ch[PVOICES];                /* the MIDI channel of each voice (the last: the drums): 1..16, 0 all (omni) */
     uint8_t clock_in;                   /* MIDI clock drives the clock output */
     uint8_t prog_chg;                   /* MIDI program change loads a preset */
-} cfg = {2, 1, 1, {1, 2}, 1, 1};
+} cfg = {2, 1, 1, {1, 2, 10}, 1, 1};
 static void cfg_defaults(void)
 {
     cfg.cpu_bar = cfg.accel = cfg.clock_in = cfg.prog_chg = 1;
     cfg.leds = 2;
     cfg.ch[0] = 1;
     cfg.ch[1] = 2;
+    cfg.ch[2] = 10;                     /* the drums: the GM drum channel */
 }
 static uint32_t cpu_pct;                /* the audio ISR's peak time over the last half second, in % of the 2.9 ms half buffer */
 #define sel (vs[eng_voice()].module)
@@ -349,9 +355,14 @@ static void header_draw(void)
         bar_text(b, C_RED);
     } else {
         char b[40], *p = b;
-        *p++ = (char)('1' + eng_voice());
+        *p++ = (char)('1' + (dsel ? DRUM_V : eng_voice()));
         *p++ = ' ';
-        p = put(p, patch_label ? patch_label : "");
+        if (dsel) {
+            p = put(p, "DRUMS ");
+            p = put(p, DR_PRESETS[dr.preset].name);
+        } else {
+            p = put(p, patch_label ? patch_label : "");
+        }
         *p = 0;
         if (cfg.cpu_bar) {
             bar_name_cpu(b, C_ACC);
@@ -543,6 +554,7 @@ static void module_draw(int full)
 static void arp_view_draw(uint32_t page, int full);
 static void mixer_draw(int full);
 static void menu_draw(int full);
+static void drum_view_draw(int full);
 
 static void view_draw(int full)                 /* whichever page is showing */
 {
@@ -550,6 +562,8 @@ static void view_draw(int full)                 /* whichever page is showing */
         mixer_draw(full);
     else if (page == PAGE_MENU)
         menu_draw(full);
+    else if (dsel)
+        drum_view_draw(full);
     else if (page)
         arp_view_draw(page, full);
     else

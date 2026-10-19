@@ -23,7 +23,9 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         int32_t *o = &abuf[half * HALF_WORDS];
         if (eng_run) {
             arp_run(HALF_FRAMES);                       /* the arpeggiator plays the voice before the block is rendered */
+            dr_run(HALF_FRAMES);                        /* the drum machine: voice 3, its sequencer and the panel's triggers */
             eng_render(eng_l, eng_r, HALF_FRAMES);
+            dr_render(eng_l, eng_r, HALF_FRAMES);
             int32_t m = (int32_t)master_q12;
             for (i = 0; i < HALF_FRAMES; i++) {         /* Q16 (+-1.0) * MASTER -> 24 bit in the low bits, -6 dBFS ceiling */
                 o[2u * i] = ((eng_l[i] * m) >> 12) << 6;
