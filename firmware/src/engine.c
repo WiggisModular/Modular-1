@@ -674,6 +674,8 @@ static void m_chip(node_t *nd, uint32_t n)
                 if (gb && sh)
                     lfsr = (lfsr & ~(1u << 6)) | (fb << 6);
             }
+            if (!lfsr)
+                lfsr = 0x7fffu;                         /* GB short mode can run into the all-zero state, which never leaves it */
             v = (lfsr & 1u) ? -ENG_ONE : ENG_ONE;
         }
         out[i] = mul16(v, lvl);

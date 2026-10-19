@@ -356,7 +356,8 @@ static inline int32_t dr_noise(void)                    /* white, Q16 +-1 */
 
 static inline void dr_decay(int32_t *e, int32_t x30)
 {
-    *e -= (int32_t)(((int64_t)*e * x30) >> 30);
+    int32_t d = (int32_t)(((int64_t)*e * x30) >> 30);
+    *e -= d ? d : (*e > 0);                             /* never stalls above zero: a long decay still ends (the liveness test in dr_render) */
 }
 
 /* add n frames (<= 128) of drums to left / right, clamped */

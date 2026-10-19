@@ -110,6 +110,14 @@ int main(void)
         CHECK(tail_long > tail * 3, "decay 100 tail %d vs decay 0 tail %d", tail_long, tail);
     }
 
+    /* a long decay ends: the kick at decay 100 and the open hat at 100 do not stall above the liveness threshold */
+    reset();
+    dr.decay[DR_KICK] = dr.decay[DR_OHAT] = 100;
+    dr_hit(DR_KICK, 127);
+    dr_hit(DR_OHAT, 127);
+    run(2500, 0);
+    CHECK(DV[DR_KICK].env < 16384 && DV[DR_OHAT].env < 16384, "long decays still live: kick env %d, open hat env %d", DV[DR_KICK].env, DV[DR_OHAT].env);
+
     /* the closed hat chokes the open one */
     reset();
     dr.decay[DR_OHAT] = 100;

@@ -256,11 +256,13 @@ static void dr_knobs(const int32_t *st)
 }
 
 /* the keys while the drums are selected: rising edges of the 27 key bits */
-static void dr_keys(uint32_t raw)
+static void dr_keys(uint32_t raw, int active)
 {
     static uint32_t prev;
     uint32_t rise = raw & ~prev, i;
     prev = raw;
+    if (!active)
+        return;
     for (i = 0; i < 16u; i++)
         if (rise >> i & 1u) {
             dr_step_t *s = &dr.st[dr.part][i];

@@ -235,6 +235,7 @@ const chip: ModuleImpl<ChipState> = {
           s.lfsr = (s.lfsr >> 1) | (fb << 14);
           if (gb && short) s.lfsr = (s.lfsr & ~(1 << 6)) | (fb << 6);
         }
+        if (s.lfsr === 0) s.lfsr = 0x7fff; // GB short mode can run into the all-zero state, which never leaves it
         v = s.lfsr & 1 ? -1 : 1;
       }
       out[i] = v * lvl;

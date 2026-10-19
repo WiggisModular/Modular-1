@@ -744,8 +744,7 @@ static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F
     ignore &= raw;
     now = raw & ~ignore;
     if (dsel) {                                     /* the drums: the keys are step buttons (drum_ui.c), they play no notes */
-        if (!page || page == 1u)
-            dr_keys(now);
+        dr_keys(now, !page || page == 1u);          /* (the edge memory follows the keys on every page) */
         prev = 0;
         return;
     }
