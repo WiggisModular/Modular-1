@@ -20,11 +20,11 @@ static void defaults_now(void);
 
 /* ---- mixer */
 
-/* the keys that mute voice 1..4: the black keys F#3, G#3, A#3, C#4 (OP1..OP4) */
-static const uint8_t MIX_KEY_BIT[ENG_VOICES] = {1, 3, 5, 8};
-#define MIX_KEYS ((1u << 1) | (1u << 3) | (1u << 5) | (1u << 8))
+/* the keys that mute voice 1..2: the black keys F#3, G#3 (OP1, OP2) */
+static const uint8_t MIX_KEY_BIT[ENG_VOICES] = {1, 3};
+#define MIX_KEYS ((1u << 1) | (1u << 3))
 
-static uint8_t mix_vol[ENG_VOICES] = {100, 100, 100, 100};   /* percent, square law (so the lower half has some travel) */
+static uint8_t mix_vol[ENG_VOICES] = {100, 100};   /* percent, square law (so the lower half has some travel) */
 static uint8_t mix_mute[ENG_VOICES];
 
 static void mix_apply(uint32_t v)
@@ -72,7 +72,7 @@ static void mixer_draw(int full)
 {
     uint32_t v;
     if (full)
-        text5x7(12, 226, "K1-K4: LEVEL  OP1-OP4 KEYS: MUTE", 1, 0x4208u, C_BG);
+        text5x7(12, 226, "K1-K2: LEVEL  OP1-OP2 KEYS: MUTE", 1, 0x4208u, C_BG);
     for (v = 0; v < ENG_VOICES; v++)
         mix_row(v, 32 + 48 * (int32_t)v);
 }
@@ -96,11 +96,11 @@ static void mix_toggle(uint32_t v)
 
 /* ---- settings menu */
 
-enum { MR_LEDS, MR_CPU, MR_ACCEL, MR_OCT, MR_CH1, MR_CH2, MR_CH3, MR_CH4, MR_CLOCK, MR_PROG, MR_VERSION, MR_PEAK, MR_UPDATE, MR_DEFAULTS, MR_COUNT };
+enum { MR_LEDS, MR_CPU, MR_ACCEL, MR_OCT, MR_CH1, MR_CH2, MR_CLOCK, MR_PROG, MR_VERSION, MR_PEAK, MR_UPDATE, MR_DEFAULTS, MR_COUNT };
 enum { MT_DISPLAY, MT_CONTROL, MT_MIDI, MT_SYSTEM, MT_MANUAL, MT_COUNT };   /* (MANUAL has no rows: a text) */
-static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "CPU IN BAR", "KNOB ACCEL", "OCTAVE", "V1 CHANNEL", "V2 CHANNEL", "V3 CHANNEL", "V4 CHANNEL", "CLOCK IN", "PROG CHANGE",
+static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "CPU IN BAR", "KNOB ACCEL", "OCTAVE", "V1 CHANNEL", "V2 CHANNEL", "CLOCK IN", "PROG CHANGE",
                                               "VERSION", "CPU PEAK", "UPDATE MODE", "DEFAULTS"};
-static const uint8_t ROW_TAB[MR_COUNT] = {MT_DISPLAY, MT_DISPLAY, MT_CONTROL, MT_CONTROL, MT_MIDI, MT_MIDI, MT_MIDI, MT_MIDI, MT_MIDI, MT_MIDI, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM};
+static const uint8_t ROW_TAB[MR_COUNT] = {MT_DISPLAY, MT_DISPLAY, MT_CONTROL, MT_CONTROL, MT_MIDI, MT_MIDI, MT_MIDI, MT_MIDI, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM};
 static const char *const TAB_NAME[MT_COUNT] = {"DISPLAY", "CONTROL", "MIDI", "SYSTEM", "MANUAL"};
 
 static uint8_t menu_tab, menu_sel = MR_LEDS;     /* the tab and the selected row (a row number) */
@@ -138,9 +138,7 @@ static void menu_value(uint32_t row, char *out)
         p += str_len(p);
         break;
     case MR_CH1:
-    case MR_CH2:
-    case MR_CH3:
-    case MR_CH4: {
+    case MR_CH2: {
         uint32_t c = cfg.ch[row - MR_CH1];
         if (!c) {
             p = put(p, "OMNI");
@@ -290,9 +288,7 @@ static void menu_set_row(uint32_t row, int32_t s)       /* s > 0: the next value
         leds_octave();
         break;
     case MR_CH1:
-    case MR_CH2:
-    case MR_CH3:
-    case MR_CH4: {
+    case MR_CH2: {
         int32_t v = (int32_t)cfg.ch[row - MR_CH1] + d;
         cfg.ch[row - MR_CH1] = (uint8_t)(v < 0 ? 0 : v > 16 ? 16 : v);
         break;

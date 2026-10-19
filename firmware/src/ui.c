@@ -8,8 +8,8 @@
  *   y  29  CPU                          y 120  K1..K4 rows        y 200 P1, P2 */
 #define C_BG 0x0000u
 #define C_FG 0xFFFFu
-/* the accent: each voice has its own colour (orange, purple, cyan, green) */
-static const uint16_t VOICE_COLOR[ENG_VOICES] = {0xFD20u, 0xA19Fu, 0x07FFu, 0x7FE0u};
+/* the accent: each voice has its own colour (orange, purple) */
+static const uint16_t VOICE_COLOR[ENG_VOICES] = {0xFD20u, 0xA19Fu};
 #define C_ACC (VOICE_COLOR[eng_voice()])
 #define C_DIM 0x7BEFu
 #define C_RED 0xF800u
@@ -35,15 +35,13 @@ static struct {
     uint8_t ch[ENG_VOICES];             /* the MIDI channel of each voice: 1..16, 0 all (omni) */
     uint8_t clock_in;                   /* MIDI clock drives the clock output */
     uint8_t prog_chg;                   /* MIDI program change loads a preset */
-} cfg = {2, 1, 1, {1, 2, 3, 4}, 1, 1};
+} cfg = {2, 1, 1, {1, 2}, 1, 1};
 static void cfg_defaults(void)
 {
     cfg.cpu_bar = cfg.accel = cfg.clock_in = cfg.prog_chg = 1;
     cfg.leds = 2;
     cfg.ch[0] = 1;
     cfg.ch[1] = 2;
-    cfg.ch[2] = 3;
-    cfg.ch[3] = 4;
 }
 static uint32_t cpu_pct;                /* the audio ISR's peak time over the last half second, in % of the 2.9 ms half buffer */
 #define sel (vs[eng_voice()].module)
