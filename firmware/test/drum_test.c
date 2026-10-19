@@ -251,6 +251,36 @@ int main(void)
     run(43 * 50 + 5, 0);
     CHECK(dr_hits[DR_KICK] == 50 + 0 || dr_hits[DR_KICK] == 51, "always over 50 passes: %d", (int)dr_hits[DR_KICK]);
 
+    /* every factory pattern has ghost notes and ratchets, the tweaks stay on the grid, none of them silences or doubles a part's base */
+    {
+        uint32_t n, t;
+        for (t = 0; t < DR_NTWEAKS; t++)
+            CHECK(DR_TWEAKS[t].preset < DR_NPRESETS && DR_TWEAKS[t].part < DR_N && DR_TWEAKS[t].step < DR_STEPS &&
+                  DR_TWEAKS[t].mode >= DM_ON && DR_TWEAKS[t].mode <= DM_R4 && DR_TWEAKS[t].vel < DV_N, "tweak %u out of range", t);
+        for (n = 0; n < DR_NPRESETS; n++) {
+            int ghost = 0, ratchet = 0, hard = 0, q, k;
+            reset();
+            dr_load_preset(n);
+            for (q = 0; q < 4; q++)
+                for (k = 0; k < 16; k++) {
+                    const dr_step_t *s = &dr.st[q][k];
+                    ghost += s->mode && s->vel == DV_GHOST;
+                    ratchet += s->mode >= DM_R2 && s->mode <= DM_R4;
+                    hard += s->mode && s->vel == DV_HARD;
+                }
+            CHECK(ghost >= 2 && ratchet >= 2, "%s: %d ghost notes, %d ratchets", DR_PRESETS[n].name, ghost, ratchet);
+            CHECK(dr.st[DR_KICK][0].mode == DM_ON && dr.st[DR_KICK][0].vel == DV_NORMAL, "%s: the kick on 1 stays plain", DR_PRESETS[n].name);
+            CHECK(dr.st[DR_SNARE][4].mode == DM_ON || n >= 6, "%s: the backbeat stays", DR_PRESETS[n].name);
+        }
+        reset();
+        dr_load_preset(0);
+        dr.bpm = 120;
+        dr_play = 1;
+        run(43 * 16 + 5, 0);                            /* a whole pass of a tweaked pattern runs and stays in range */
+        run(1, &pk);
+        CHECK(pk <= ENG_ONE, "peak %d", pk);
+    }
+
     /* panel side: presets and clamping */
     reset();
     memset((void *)dr_hits, 0, sizeof dr_hits);

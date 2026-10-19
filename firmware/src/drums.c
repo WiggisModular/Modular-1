@@ -43,7 +43,7 @@ typedef struct { uint8_t mode, cond, vel; } dr_step_t;
 
 typedef struct {
     const char *name;
-    uint16_t pat[DR_N];                 /* the factory patterns: bit i = step i (step 1 is bit 0), all plain ON steps */
+    uint16_t pat[DR_N];                 /* the factory patterns: bit i = step i (step 1 is bit 0), plain ON steps; DR_TWEAKS adds the rest */
     uint16_t bpm;
     uint8_t decay[DR_N];
 } dr_preset_t;
@@ -59,6 +59,32 @@ static const dr_preset_t DR_PRESETS[] = {
     {"TRAP", {0x0881, 0x0100, 0xD555, 0x0000}, 140, {60, 45, 20, 50}},
 };
 #define DR_NPRESETS ((uint32_t)(sizeof DR_PRESETS / sizeof DR_PRESETS[0]))
+
+/* What the bitmasks cannot say: ghost notes (also steps the mask leaves empty) and ratchets, per preset. A step listed here is
+ * switched on with the given mode and volume; the others stay as the mask has them. */
+typedef struct { uint8_t preset, part, step, mode, vel; } dr_tweak_t;
+#define TG(pr, pt, st) {pr, pt, st, DM_ON, DV_GHOST}                        /* a ghost note */
+#define TR(pr, pt, st, m) {pr, pt, st, m, DV_NORMAL}                        /* a ratchet (DM_R2..DM_R4) */
+#define TRG(pr, pt, st, m) {pr, pt, st, m, DV_GHOST}                        /* a soft ratchet */
+static const dr_tweak_t DR_TWEAKS[] = {
+    /* 0 FOUR FLOOR: ghost snares before the backbeat, the hat on 13 rolls */
+    TG(0, DR_SNARE, 7), TG(0, DR_SNARE, 15), TG(0, DR_CHAT, 3), TR(0, DR_CHAT, 12, DM_R2), TRG(0, DR_CHAT, 15, DM_R2),
+    /* 1 BREAKBEAT: ghost snares around the kicks, a hat roll */
+    TG(1, DR_SNARE, 9), TG(1, DR_SNARE, 15), TG(1, DR_SNARE, 2), TR(1, DR_CHAT, 6, DM_R2), TRG(1, DR_CHAT, 13, DM_R2),
+    /* 2 BOOM BAP: lazy ghost snares, a doubled hat */
+    TG(2, DR_SNARE, 7), TG(2, DR_SNARE, 14), TG(2, DR_KICK, 8), TR(2, DR_CHAT, 14, DM_R2), TRG(2, DR_SNARE, 15, DM_R2),
+    /* 3 HOUSE: ghost hats and claps, a hat roll into the bar end */
+    TG(3, DR_CHAT, 3), TG(3, DR_CHAT, 11), TG(3, DR_SNARE, 15), TR(3, DR_CHAT, 12, DM_R2), TR(3, DR_CHAT, 15, DM_R3),
+    /* 4 TECHNO: ghost 16ths between the hats, a snare roll */
+    TG(4, DR_CHAT, 1), TG(4, DR_CHAT, 5), TG(4, DR_CHAT, 9), TG(4, DR_CHAT, 13), TR(4, DR_SNARE, 15, DM_R3), TR(4, DR_CHAT, 11, DM_R2),
+    /* 5 ELECTRO: ghost snares, a kick double and a hat triplet */
+    TG(5, DR_SNARE, 7), TG(5, DR_SNARE, 15), TR(5, DR_KICK, 10, DM_R2), TR(5, DR_CHAT, 9, DM_R3),
+    /* 6 HALF TIME: ghost snares around the big one, a hat roll */
+    TG(6, DR_SNARE, 6), TG(6, DR_SNARE, 11), TG(6, DR_SNARE, 15), TR(6, DR_CHAT, 12, DM_R2), TRG(6, DR_CHAT, 14, DM_R2),
+    /* 7 TRAP: the hat rolls, a ghost snare and kick */
+    TR(7, DR_CHAT, 6, DM_R3), TR(7, DR_CHAT, 10, DM_R2), TR(7, DR_CHAT, 15, DM_R4), TG(7, DR_CHAT, 14), TG(7, DR_SNARE, 13), TG(7, DR_KICK, 3),
+};
+#define DR_NTWEAKS ((uint32_t)(sizeof DR_TWEAKS / sizeof DR_TWEAKS[0]))
 
 /* the settings the panel edits (and the state saves) */
 static struct {
@@ -139,6 +165,12 @@ static void dr_load_preset(uint32_t n)                  /* panel side */
         }
         dr.decay[p] = DR_PRESETS[n].decay[p];
     }
+    for (p = 0; p < DR_NTWEAKS; p++)
+        if (DR_TWEAKS[p].preset == n) {
+            dr_step_t *s = &dr.st[DR_TWEAKS[p].part][DR_TWEAKS[p].step];
+            s->mode = DR_TWEAKS[p].mode;
+            s->vel = DR_TWEAKS[p].vel;
+        }
     dr.bpm = DR_PRESETS[n].bpm;
 }
 

@@ -76,20 +76,13 @@ int main(int argc, char **argv)
     sel = argc > 3 ? (uint32_t)atoi(argv[3]) : 0u;
     octave = argc > 4 ? atoi(argv[4]) : 0;
     page = argc > 5 ? (uint8_t)atoi(argv[5]) : 0u;          /* 1..3: the arpeggiator pages; 9: the drums (STEP = the playhead) */
-    if (page == 9u || page == 8u) {                         /* 9: the drum matrix, 8: its sound page (STEP = the playhead) */
+    if (page == 9u || page == 8u) {                         /* 9: the drum matrix, 8: its sound page (STEP = the playhead; PRESET_INDEX picks the drum pattern) */
         page = page == 8u ? 1u : 0u;
         dsel = 1;
         dr_defaults();
-        dr.st[DR_KICK][6].mode = DM_R3;                     /* some of everything, to look at */
-        dr.st[DR_KICK][8].vel = DV_HARD;
-        dr.st[DR_SNARE][10].mode = DM_FLAM;
-        dr.st[DR_SNARE][12].vel = DV_GHOST;
-        dr.st[DR_CHAT][3].mode = DM_R2;
-        dr.st[DR_CHAT][3].cond = DC_PROB + 4;
-        dr.st[DR_CHAT][5].mode = DM_ON;
-        dr.st[DR_CHAT][5].cond = 3;
-        dr.part = DR_SNARE;
-        dr.cur = 10;
+        dr_load_preset(p);                                  /* the pattern is the PRESET_INDEX (modulo 8) */
+        dr.part = DR_CHAT;
+        dr.cur = 14;
         dr_play = argc > 6;
         dr_step_ui = argc > 6 ? (uint8_t)atoi(argv[6]) : 0u;
         argc = 6;
