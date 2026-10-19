@@ -107,7 +107,7 @@ const osc: ModuleImpl<{ phase: number }> = {
     inputs: [control('pitch'), audio('pm')],
     outputs: [audio('out')],
     params: [
-      param('wave', 0, 3, 0, { step: 1, choices: WAVES }),
+      param('wave', 0, 3, 0, { step: 0.05, choices: WAVES, morph: true }),
       param('pw', 0.05, 0.95, 0.5, { step: 0.01 }),
       param('coarse', -48, 48, 0, { step: 1, unit: 'st' }),
       param('fine', -100, 100, 0, { step: 1, unit: 'ct' }),
@@ -120,7 +120,9 @@ const osc: ModuleImpl<{ phase: number }> = {
     const { pitch, pm } = c.inp;
     const pw = Math.min(0.95, Math.max(0.05, c.p.pw ?? 0.5));
     const base = (c.p.coarse ?? 0) / 12 + (c.p.fine ?? 0) / 1200;
-    const kind = Math.round(c.p.wave ?? 0);
+    const morph = Math.min(3, Math.max(0, c.p.wave ?? 0));   // 0 sine .. 1 triangle .. 2 saw .. 3 square, crossfaded in between
+    const kind = Math.min(2, Math.floor(morph));
+    const mix = morph - kind;
     const idx = c.p.pm ?? 0;
     const lvl = c.p.level ?? 1;
     const out = c.out.out;
@@ -134,7 +136,8 @@ const osc: ModuleImpl<{ phase: number }> = {
         ph += (idx * pm[i]) / (2 * Math.PI);
         ph -= Math.floor(ph);
       }
-      out[i] = wave(kind, ph, dt, pw) * lvl;
+      const a = wave(kind, ph, dt, pw);
+      out[i] = (mix === 0 ? a : mix === 1 ? wave(kind + 1, ph, dt, pw) : a + (wave(kind + 1, ph, dt, pw) - a) * mix) * lvl;
     }
   },
 };

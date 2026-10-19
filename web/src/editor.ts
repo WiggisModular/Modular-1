@@ -4,6 +4,7 @@ import { DEFS } from './modules';
 import {
   addModule,
   fromUnit,
+  morphText,
   toUnit,
   SOURCES,
   type Source,
@@ -128,7 +129,7 @@ export class Editor {
       name.textContent = pd.name;
       const val = document.createElement('output');
       const fmt = (v: number): string =>
-        pd.altText && m.params[pd.altText.when] >= 0.5 ? pd.altText.text(v) : (pd.choices ? pd.choices[Math.round(v)] : `${Number(v.toFixed(3))}${pd.unit ? ' ' + pd.unit : ''}`);
+        pd.altText && m.params[pd.altText.when] >= 0.5 ? pd.altText.text(v) : (pd.choices && pd.morph ? morphText(pd.choices, v) : pd.choices ? pd.choices[Math.round(v)] : `${Number(v.toFixed(3))}${pd.unit ? ' ' + pd.unit : ''}`);
       val.textContent = fmt(m.params[pd.name]);
       refresh.push(() => (val.textContent = fmt(m.params[pd.name])));
       const input = document.createElement('input');

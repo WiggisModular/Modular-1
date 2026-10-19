@@ -25,6 +25,9 @@ export interface ParamDef {
   unit?: string;
   /** names for integer-valued choice params (waveform etc.) */
   choices?: string[];
+  /** with `choices`: the value is a continuous position between neighbouring choices (the oscillator morphs between its waveforms),
+   * shown as `SIN>TRI 40%` between two of them */
+  morph?: boolean;
   /** logarithmic: the range is covered in equal ratios (a filter cutoff in octaves). Modulation and the knobs move the value in
    * that space: a fraction of the range is a fraction of the octaves. */
   log?: boolean;
@@ -34,6 +37,16 @@ export interface ParamDef {
   toggle?: boolean;
   /** while the toggle parameter `when` is on, the value is shown as `text(value)` instead of the number (the synced delay time as a note length) */
   altText?: { when: string; text: (v: number) => string };
+}
+
+/** a morph parameter's value as text: the shape (`saw`), or between two (`saw > square 40%`) */
+export function morphText(choices: string[], v: number): string {
+  const x = Math.min(choices.length - 1, Math.max(0, v));
+  const k = Math.min(choices.length - 2, Math.floor(x));
+  const pct = Math.round((x - k) * 100);
+  if (pct <= 3) return choices[k];
+  if (pct >= 97) return choices[k + 1];
+  return `${choices[k]} > ${choices[k + 1]} ${pct}%`;
 }
 
 /** position of a value in its range, 0..1 (logarithmic for log parameters) */

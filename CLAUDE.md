@@ -163,3 +163,7 @@ SysEx over USB MIDI. The device *pulls* blocks: it sends read requests (cmd 0x30
 - The settings menu has a fifth tab MANUAL (`menu.c`, text in `manual.c`): controls, MIDI mapping, editor link, memory limits, one scrollable page (SELECT or PRESET scrolls; PRESET only steps patches outside the menu, ALGO changes tab, OCT buttons do nothing there). Lines are `MANUAL[]` entries, first character = style (`#` heading, ` ` text, `~` dim), at most 35 characters, capitals only (no `;` in the font). Keep it in step with the buttons, `midi_drain` and the limits. Preview: `tools/ui_preview.sh out.png 1 0 0 5 0 4 <first line>`.
 
 - Wording: in user-visible text (LCD manual, web app) a stored sound is a "patch", not a "preset"; only the hardware PRESET knob keeps its name. Identifiers (`PRESETS`, `preset_load`, `#presets` tab id, file names) are unchanged.
+
+## Oscillator morph (host-tested, golden pass incl. a morph patch; not flashed)
+
+- `osc.wave` is a position 0..3 (sine, triangle, saw, square), step 0.05, `ParamDef.morph`; whole numbers = the pure shapes (old patches unchanged, binary format unchanged), between = linear crossfade of the two neighbours (`m_osc` in engine.c, `osc.process` in modules.ts); a cable on `wave` (p1 by default) sweeps it. Display: `morphText` (web), `put_param` with `pmorph` (generated `defs.h`: `<T>_MORPH`, last field of `def_t`) on the LCD (`SIN>TRI 40%`). Golden patch `osc-morph` (web/scripts/golden.ts), vitest 'the oscillator morphs...'. LFO wave stays a choice. Pulse width still only shapes the square.

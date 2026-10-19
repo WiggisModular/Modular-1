@@ -18,6 +18,8 @@ From the Felucca and FM-1 reverse-engineering projects: a JieLi AC791N SoC (pi32
 
 `web/src/engine.ts` and `web/src/modules.ts` are the reference implementation: float DSP, 128-frame blocks, patch graph ordered by `processingOrder` (loops become one-block feedback). Module definitions (`ModuleDef`) are data and are shared by the editor and, later, the firmware.
 
+**Oscillator morph.** The oscillator's `wave` parameter is a position 0..3 along sine, triangle, saw, square (it used to be a whole-number choice): whole numbers are the pure shapes (so stored patches sound as before), a value in between is the linear crossfade of the two neighbours, a modulation input on `wave` (p1 by default) sweeps it. Both neighbours are computed only while the position is fractional. The parameter has `ParamDef.morph`: the editor shows `triangle > saw 40%`, the LCD `TRI>SAW 40%` (`pmorph` in the generated `defs.h`). The patch formats are unchanged (the value is a Q16 number as before). The LFO's `wave` is still a choice.
+
 ## Firmware
 
 Builds with `tools/build.py` inside `nix develop` (see CLAUDE.md), flashes with the web flasher or `tools/fm1_install.py`.
