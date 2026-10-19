@@ -141,9 +141,8 @@ typedef struct {
 } arp_t;
 
 #define ARP_CFG_DEFAULT {ARP_UP, 5, 60, 1, 0, 0, 0, 16, 16, 0, RATE_1_16, 120}   /* Maj Pentatonic, as the original's default set */
-#define ARP_N 4u                        /* one per voice (ENG_VOICES) */
-static arp_t AV[ARP_N] = {{ARP_CFG_DEFAULT, 1, 0, 0, 0, {.rng = 0x2545F491u}}, {ARP_CFG_DEFAULT, 1, 0, 0, 0, {.rng = 0x6C8E9CF5u}},
-                          {ARP_CFG_DEFAULT, 1, 0, 0, 0, {.rng = 0x1B873593u}}, {ARP_CFG_DEFAULT, 1, 0, 0, 0, {.rng = 0x3C6EF372u}}};
+#define ARP_N 2u                        /* one per voice (ENG_VOICES) */
+static arp_t AV[ARP_N] = {{ARP_CFG_DEFAULT, 1, 0, 0, 0, {.rng = 0x2545F491u}}, {ARP_CFG_DEFAULT, 1, 0, 0, 0, {.rng = 0x6C8E9CF5u}}};
 static arp_t *arp_p = AV;
 #define arp_c (arp_p->cfg)
 #define arp_dirty (arp_p->dirty)

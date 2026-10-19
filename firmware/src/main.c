@@ -104,12 +104,13 @@ static void state_unpack(uint32_t w)
 }
 
 /* The saved state (SAVE, the editor's STORE): one blob in the patch store (patchstore.c), the whole state of the panel:
- *   0 0xB2  1 version 2  2..9 the length of each voice's patch (u16)  10.. the arpeggiators' settings (ARP_PACK bytes each)
- *   then the patches as they run now (parameter edits included), then the tail: the MIDI channels (4), the LED mode, the
- *   mixer levels (4), the mute bits.
+ *   0 0xB2  1 version 4  2..5 the length of each voice's patch (u16)  6.. the arpeggiators' settings (ARP_PACK bytes each)
+ *   then the patches as they run now (parameter edits included), then the tail: the MIDI channels (2), the LED mode, the
+ *   mixer levels (2), the mute bits, then the drum machine (dr_pack).
  * With the header's words: octave and settings (state_pack), the selected module of each voice (byte per voice in word 1) and
- * the preset of each (word 2). Version 1 (two voices, before the four-voice firmware) is still read: its lengths are 2..5,
- * its arpeggiators follow at 6, its tail is the two channels and the LED mode. An even older record holds just voice 1's
+ * the preset of each (word 2). Version 3 (the same without the drums) and version 2 (four voices, voices 3 and 4 dropped) are still read; so is version 1 (two
+ * voices, before the four-voice firmware): its lengths are 2..5, its arpeggiators follow at 6, its tail is the two
+ * channels and the LED mode. An even older record holds just voice 1's
  * patch (starts with 0xA1). */
 #define BLOB_MAGIC 0xB2u
 #define ARP_PACK 13u
@@ -133,18 +134,67 @@ static void arp_unpack(uint32_t v, const uint8_t *d)
     arp_p = keep;
 }
 
+/* The drum machine (version 4 of the blob, after the tail): the step matrix (mode, volume, condition), levels, decays, length, pattern number, tempo, MIDI
+ * channel, mixer level and mute. */
+#define DRUM_PACK (2u * DR_N * DR_STEPS + 2u * DR_N + 1u + 1u + 2u + 1u + 2u)
+static void dr_pack(uint8_t *d)
+{
+    uint32_t p, i, n = 0;
+    for (p = 0; p < DR_N; p++)
+        for (i = 0; i < DR_STEPS; i++) {                /* two bytes a step: mode | volume << 3, condition */
+            d[n++] = (uint8_t)(dr.st[p][i].mode | dr.st[p][i].vel << 3);
+            d[n++] = dr.st[p][i].cond;
+        }
+    for (p = 0; p < DR_N; p++)
+        d[n++] = dr.level[p];
+    for (p = 0; p < DR_N; p++)
+        d[n++] = dr.decay[p];
+    d[n++] = dr.steps;
+    d[n++] = dr.preset;
+    d[n++] = (uint8_t)dr.bpm;
+    d[n++] = (uint8_t)(dr.bpm >> 8);
+    d[n++] = cfg.ch[DRUM_V];
+    d[n++] = mix_vol[DRUM_V];
+    d[n++] = mix_mute[DRUM_V];
+}
+
+static void dr_unpack(const uint8_t *d)
+{
+    uint32_t p, i, n = 0;
+    for (p = 0; p < DR_N; p++)
+        for (i = 0; i < DR_STEPS; i++, n += 2u) {
+            dr.st[p][i].mode = d[n] & 7u;
+            dr.st[p][i].vel = d[n] >> 3 & 3u;
+            dr.st[p][i].cond = d[n + 1u];
+        }
+    for (p = 0; p < DR_N; p++)
+        dr.level[p] = d[n++];
+    for (p = 0; p < DR_N; p++)
+        dr.decay[p] = d[n++];
+    dr.steps = d[n++];
+    dr.preset = d[n++];
+    dr.bpm = (uint16_t)(d[n] | d[n + 1u] << 8);
+    n += 2u;
+    cfg.ch[DRUM_V] = d[n] > 16u ? 10u : d[n];
+    n++;
+    mix_vol[DRUM_V] = d[n] > 100u ? 100u : d[n];
+    n++;
+    mix_mute[DRUM_V] = d[n] & 1u;
+    dr_fix();
+}
+
 #define BLOB_HDR (2u + 2u * ENG_VOICES)
 #define BLOB_TAIL (ENG_VOICES + 1u + ENG_VOICES + 1u)
 static uint32_t blob_build(void)                /* 0 if it does not fit */
 {
-    uint32_t n = BLOB_HDR, v, i, total = BLOB_HDR + ENG_VOICES * ARP_PACK + BLOB_TAIL;
+    uint32_t n = BLOB_HDR, v, i, total = BLOB_HDR + ENG_VOICES * ARP_PACK + BLOB_TAIL + DRUM_PACK;
     uint8_t mutes = 0;
     for (v = 0; v < ENG_VOICES; v++)
         total += m1_cur_lenv[v];
     if (total > PS_MAX)
         return 0;
     blob[0] = BLOB_MAGIC;
-    blob[1] = 2;
+    blob[1] = 4;
     for (v = 0; v < ENG_VOICES; v++) {
         blob[2u + 2u * v] = (uint8_t)m1_cur_lenv[v];
         blob[3u + 2u * v] = (uint8_t)(m1_cur_lenv[v] >> 8);
@@ -162,7 +212,8 @@ static uint32_t blob_build(void)                /* 0 if it does not fit */
         mutes |= (uint8_t)(mix_mute[v] << v);
     }
     blob[n++] = mutes;
-    return n;
+    dr_pack(blob + n);
+    return n + DRUM_PACK;
 }
 
 static int m1_store(const uint8_t *patch, uint32_t len)        /* (the arguments are the editor's: the state is stored whole) */
@@ -323,13 +374,13 @@ static void boot_step(const char *what)
 static const char *boot_msg;                    /* shown in the bar once the pages are up */
 static uint32_t boot_msg_ms;
 
-static const char *const VOICE_LINE[ENG_VOICES] = {"VOICE 1", "VOICE 2", "VOICE 3", "VOICE 4"};
-static void voice_step(uint32_t v)              /* the loading screen's line for voice v (0..3) */
+static const char *const VOICE_LINE[ENG_VOICES] = {"VOICE 1", "VOICE 2"};
+static void voice_step(uint32_t v)              /* the loading screen's line for voice v (0..ENG_VOICES-1) */
 {
     boot_step(VOICE_LINE[v]);
 }
 
-static void voices_boot(uint32_t from)           /* voices from..4 run the factory presets (voice n the n-th) */
+static void voices_boot(uint32_t from)           /* voices from..ENG_VOICES run the factory presets (voice n the n-th) */
 {
     uint32_t v;
     for (v = from; v < ENG_VOICES; v++) {
@@ -360,8 +411,9 @@ static int voice_restore(uint32_t v, const uint8_t *p, uint32_t len, uint32_t mo
 
 static int boot_blob(const uint8_t *b, uint32_t len)    /* the saved state (blob_build); 0 = restored */
 {
-    uint32_t nv = b[1] == 1u ? 2u : 4u, hdr = 2u + 2u * nv, at = hdr + nv * ARP_PACK, v, l[ENG_VOICES] = {0, 0, 0, 0}, total;
-    if (len < at || (b[1] != 1u && b[1] != 2u))
+    enum { SV_MAX = 4 };                                /* the most voices a record can hold (version 2) */
+    uint32_t nv = b[1] == 2u ? 4u : 2u, hdr = 2u + 2u * nv, at = hdr + nv * ARP_PACK, v, l[SV_MAX] = {0, 0, 0, 0}, total, rv;
+    if (len < at || (b[1] < 1u || b[1] > 4u))
         return -1;
     for (v = 0, total = at; v < nv; v++) {
         l[v] = (uint32_t)b[2u + 2u * v] | (uint32_t)b[3u + 2u * v] << 8;
@@ -369,9 +421,10 @@ static int boot_blob(const uint8_t *b, uint32_t len)    /* the saved state (blob
     }
     if (!l[0] || total > len)
         return -1;
+    rv = nv < ENG_VOICES ? nv : ENG_VOICES;             /* the voices this firmware has */
     {
         const uint8_t *p = b + at;
-        for (v = 0; v < nv; p += l[v], v++) {
+        for (v = 0; v < rv; p += l[v], v++) {
             uint32_t module, preset;
             if (b[1] == 1u) {                           /* two voices: 16 bit modules, voice 2's preset + 1 in word 3 */
                 module = v ? ps_loaded[1] >> 16 : ps_loaded[1] & 0xFFFFu;
@@ -389,25 +442,27 @@ static int boot_blob(const uint8_t *b, uint32_t len)    /* the saved state (blob
             }
         }
     }
-    if (nv < ENG_VOICES)
-        voices_boot(nv);
-    {                                                   /* the tail: channels, LED mode, mixer */
+    if (rv < ENG_VOICES)
+        voices_boot(rv);
+    {                                                   /* the tail: channels, LED mode, mixer (nv voices' worth) */
         const uint8_t *t = b + total;
         uint32_t left = len - total;
         if (b[1] == 1u && left >= 3u) {
             cfg.ch[0] = t[0] > 16u ? 1u : t[0];
             cfg.ch[1] = t[1] > 16u ? 2u : t[1];
             cfg.leds = t[2] > 2u ? 2u : t[2];
-        } else if (b[1] == 2u && left >= BLOB_TAIL) {
+        } else if (b[1] != 1u && left >= 2u * nv + 2u) {
             for (v = 0; v < ENG_VOICES; v++) {
                 cfg.ch[v] = t[v] > 16u ? (uint8_t)(v + 1u) : t[v];
-                mix_vol[v] = t[ENG_VOICES + 1u + v] > 100u ? 100u : t[ENG_VOICES + 1u + v];
-                mix_mute[v] = t[2u * ENG_VOICES + 1u] >> v & 1u;
+                mix_vol[v] = t[nv + 1u + v] > 100u ? 100u : t[nv + 1u + v];
+                mix_mute[v] = t[2u * nv + 1u] >> v & 1u;
             }
-            cfg.leds = t[ENG_VOICES] > 2u ? 2u : t[ENG_VOICES];
+            cfg.leds = t[nv] > 2u ? 2u : t[nv];
+            if (b[1] == 4u && left >= 2u * nv + 2u + DRUM_PACK)
+                dr_unpack(t + 2u * nv + 2u);
         }
     }
-    for (v = 0; v < nv; v++)
+    for (v = 0; v < rv; v++)
         arp_unpack(v, b + hdr + v * ARP_PACK);
     arp_sync_scale();
     mix_apply_all();
@@ -464,9 +519,14 @@ static void defaults_now(void)
         AV[v].cfg = (arp_cfg_t)ARP_CFG_DEFAULT;
         AV[v].dirty = 1;
     }
+    mix_vol[DRUM_V] = 100;
+    mix_mute[DRUM_V] = 0;
+    dr_defaults();
     mix_apply_all();
     octave = 0;
     arp_p = &AV[0];
+    dsel = 0;
+    eng_voice_select(0);
     voices_boot(0u);
     leds_avail();
     leds_octave();
@@ -491,8 +551,11 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
         if (st == 0xF0u) {                      /* realtime: the clock comes from the arpeggiator while it runs, else from MIDI in */
             uint32_t rt = (pkt >> 8) & 0xFFu;
             if (rt == 0xF8u) {
-                if (midi_clk_run && cfg.clock_in && !(AV[0].play | AV[1].play | AV[2].play | AV[3].play))
-                    eng_clock_tick();
+                if (midi_clk_run && cfg.clock_in) {
+                    dr_ext_ticks++;                 /* (the drum machine follows it while it comes) */
+                    if (!(AV[0].play | AV[1].play))
+                        eng_clock_tick();
+                }
             } else {
                 midi_clk_run = rt != 0xFCu;
             }
@@ -511,6 +574,14 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
                     eng_voice_select(mv);
                     preset_load(n);
                     eng_voice_select(keep);
+                    redraw = 1;
+                }
+            }
+            if (!cfg.ch[DRUM_V] || cfg.ch[DRUM_V] == chn) {     /* the drums: GM drum notes, program change = pattern */
+                if (st == 0x90u && v) {
+                    dr_hit((uint32_t)dr_midi_part(n), v);       /* (-1: no part, ignored) */
+                } else if (st == 0xC0u && cfg.prog_chg) {
+                    dr_load_preset(n);
                     redraw = 1;
                 }
             }
@@ -564,11 +635,14 @@ static void knobs_poll(void)
         return;
     }
     if (st[6]) {
-        preset_step(st[6]);
+        if (dsel)
+            dr_pattern_step(st[6]);                 /* the drums: the factory patterns */
+        else
+            preset_step(st[6]);
         return;
     }
-    if (page == PAGE_MIXER) {                       /* K1 / K2: the level of voice 1 / 2 */
-        for (k = 0; k < ENG_VOICES; k++) {
+    if (page == PAGE_MIXER) {                       /* K1 / K2 / K3: the level of voice 1 / 2 / the drums */
+        for (k = 0; k < PVOICES; k++) {
             uint32_t fast = cfg.accel && fm1_ms - last_ms[k] < 80u;
             if (st[2u + k]) {
                 last_ms[k] = fm1_ms;
@@ -577,6 +651,10 @@ static void knobs_poll(void)
         }
         if (st[0])
             page_set(page);                         /* SELECT: back to the module page */
+        return;
+    }
+    if (dsel) {                                     /* the drum page: SELECT the part, K1..K4 */
+        dr_knobs(st);
         return;
     }
     if (page && st[0])                              /* SELECT: back to the module page */
@@ -657,7 +735,7 @@ static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F
     uint32_t raw = fm1_in.notes, now, diff, n;
     if (page == PAGE_MIXER) {                       /* the mixer: the F# and G# keys mute voice 1 / 2 and play nothing */
         uint32_t rise = raw & ~prev_raw & MIX_KEYS, v;
-        for (v = 0; v < ENG_VOICES; v++)
+        for (v = 0; v < PVOICES; v++)
             if (rise >> MIX_KEY_BIT[v] & 1u)
                 mix_toggle(v);
         ignore |= rise;                             /* (until they are let go, also after leaving the page) */
@@ -665,6 +743,12 @@ static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F
     prev_raw = raw;
     ignore &= raw;
     now = raw & ~ignore;
+    if (dsel) {                                     /* the drums: the keys are step buttons (drum_ui.c), they play no notes */
+        if (!page || page == 1u)
+            dr_keys(now);
+        prev = 0;
+        return;
+    }
     diff = now ^ prev;
     prev = now;
     for (n = 0; diff && n < 27u; n++) {
@@ -705,7 +789,7 @@ static void led_breath_key(uint32_t id, int on)     /* a button's LED breathes (
 
 static void leds_arp(void)
 {
-    int run = arp_play;
+    int run = dsel ? dr_play : arp_play;
     fm1_led_key(BTN_PLAY, !run);                    /* stopped: PLAY's red LED; running: the green one breathes */
     fm1_led[8] &= (uint8_t)~2u;
     if (run)
@@ -715,7 +799,7 @@ static void leds_arp(void)
     fm1_led_key(BTN_ARP, page == 1u);
     fm1_led_key(BTN_SEQ, page == 2u);
     fm1_led_key(BTN_LFO, page == 3u);
-    fm1_led_key(BTN_SEL, eng_voice() != 0u);        /* lit while another voice than 1 is selected */
+    fm1_led_key(BTN_SEL, dsel || eng_voice() != 0u);   /* lit while another voice than 1 is selected */
     fm1_led_key(BTN_GLO, page == PAGE_MIXER);
 }
 
@@ -796,7 +880,7 @@ static void leds_avail(void)                        /* the page buttons glow dim
 
 static void home_press(void)
 {
-    uint32_t n = (uint32_t)eng_nmodules(), i;
+    uint32_t n = dsel ? 0u : (uint32_t)eng_nmodules(), i;
     for (i = 0; i < n; i++)
         if (eng_type(i) == T_FM1) {
             sel = i;
@@ -809,21 +893,31 @@ static void home_press(void)
     }
     view_draw(1);
 }
-/* SEL: the next voice (1 -> 2 -> 3 -> 4 -> 1). The keys, MIDI, knobs and LCD follow it; the notes held on the old voice end */
+/* SEL: the next voice (1 -> 2 -> the drums -> 1). The keys, MIDI, knobs and LCD follow it; the notes held on the old voice end */
 static void voice_switch(void)
 {
-    uint32_t v = (eng_voice() + 1u) % ENG_VOICES;
-    eng_all_notes_off_v(eng_voice());
-    eng_voice_select(v);
-    arp_p = &AV[v];                                 /* the arpeggiator pages and PLAY act on this voice's */
-    arp_sync_scale();
+    uint32_t v = ((dsel ? DRUM_V : eng_voice()) + 1u) % PVOICES;
+    if (!dsel)
+        eng_all_notes_off_v(eng_voice());
+    if (v == DRUM_V) {
+        dsel = 1;
+        if (page && page < PAGE_MIXER)              /* (the arpeggiator pages are for the patch voices) */
+            page = 0;
+    } else {
+        dsel = 0;
+        eng_voice_select(v);
+        arp_p = &AV[v];                             /* the arpeggiator pages and PLAY act on this voice's */
+        arp_sync_scale();
+    }
     leds_arp();
     lcd_fill(0, 24, 240, 216, C_BG);
     screen_idle();
     {
-        char m[12], *q = m;
+        char m[20], *q = m;
         q = put(q, "VOICE ");
         *q++ = (char)('1' + v);
+        if (dsel)
+            q = put(q, " DRUMS");
         *q = 0;
         ui_msg(m, 1000);
     }
@@ -877,14 +971,22 @@ static void buttons_poll(void)
     }
     if (p & (1u << BTN_GLO))
         page_set(PAGE_MIXER);
-    if (p & (1u << BTN_ARP))
+    if (dsel && (p & (1u << BTN_ARP)))
+        page_set(1);                                /* the drums' SOUND page (the same button goes back to the matrix) */
+    else if (dsel && (p & ((1u << BTN_SEQ) | (1u << BTN_LFO))))
+        ui_msg("NO ARP ON DRUMS", 1000);
+    else if (p & (1u << BTN_ARP))
         page_set(1);
-    if (p & (1u << BTN_SEQ))
+    else if (p & (1u << BTN_SEQ))
         page_set(2);
-    if (p & (1u << BTN_LFO))
+    else if (p & (1u << BTN_LFO))
         page_set(3);
-    if (p & (1u << BTN_PLAY))
-        arp_toggle();
+    if (p & (1u << BTN_PLAY)) {
+        if (dsel)
+            dr_toggle_play();
+        else
+            arp_toggle();
+    }
 }
 
 static void uboot_now(void)                             /* the update loader (also MENU > UPDATE MODE) */
@@ -955,6 +1057,7 @@ static void fm1_main(void)
     fm1_irq_enable_all();
     fm1_delay_ms(30);
     boot_step("STATE");
+    dr_defaults();
     patch_boot();
     while (fm1_ms - t_splash < SPLASH_MS) {             /* the screen stays up; the bar fills with the time; MIDI and the host */
         fm1_wdt_feed();                                 /* are served meanwhile (notes play, the editor and flasher get answers) */
@@ -992,6 +1095,7 @@ static void fm1_main(void)
                 view_draw(full);
             }
             au_step_poll(page);
+            dr_step_poll();
             cpu_poll();
         }
         {   /* OCT- + OCT+ (matrix buttons 0 and 1) held 5 s: UBOOT, as in Felucca */

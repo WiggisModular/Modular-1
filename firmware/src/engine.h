@@ -40,7 +40,7 @@ void eng_note_off(uint32_t note);
 void eng_all_notes_off(void);
 /* the voices (patches that play together): the calls above and the patch / parameter calls act on the selected one; the
  * _v calls name the voice (the arpeggiator plays its own). eng_render mixes all voices. */
-#define ENG_VOICES 4                  /* patches that play at once, voices 1..4 */
+#define ENG_VOICES 2                  /* patches that play at once, voices 1..2 */
 void eng_voice_select(uint32_t v);
 void eng_voice_gain(uint32_t v, int32_t q16);        /* the mixer: a voice's level, Q16 (0 = muted) */
 uint32_t eng_voice(void);
