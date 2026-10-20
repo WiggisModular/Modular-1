@@ -176,7 +176,7 @@ static uint16_t th_buf[TH_W * TH_H] __attribute__((section(".pool")));   /* byte
 
 static const uint16_t TYPE_COLOR[N_TYPES] = {
     [T_FM1] = 0x07E0, [T_OSC] = 0xFD20, [T_LFO] = 0xF81F, [T_NOISE] = 0xB596, [T_CONST] = 0xBDF7, [T_SCALE] = 0x867F,
-    [T_ADSR] = 0x57EA, [T_VCA] = 0xFFE0, [T_FILTER] = 0x07FF, [T_MIXER] = 0xFC10, [T_DELAY] = 0x9A7F, [T_REVERB] = 0x07F3, [T_OUTPUT] = 0xF800, [T_CHIP] = 0xFE60,
+    [T_ADSR] = 0x57EA, [T_VCA] = 0xFFE0, [T_FILTER] = 0x07FF, [T_MIXER] = 0xFC10, [T_DELAY] = 0x9A7F, [T_REVERB] = 0x07F3, [T_OUTPUT] = 0xF800, [T_CHIP] = 0xFE60, [T_TRANSPOSE] = 0xB45F,
 };
 
 static void th_px(int32_t x, int32_t y, uint16_t c)
@@ -339,10 +339,10 @@ static void bar_text(const char *s, uint16_t bg)
     for (i = 0; i < n; i++)
         b[i] = s[i];
     b[n] = 0;
-    w = n * 9u;
+    w = text_mid_w(b);
     lcd_fill(0, 0, 240, BAR_H, bg);
     if (n)
-        text_mid((240u - w) / 2u, (BAR_H - 11u) / 2u, b, C_BG, bg);
+        text_mid_field((240u - w) / 2u, (BAR_H - 11u) / 2u, b, C_BG, bg, 0);
 }
 
 /* the name at the left and the CPU load at the right, black on the accent colour */
@@ -358,10 +358,10 @@ static void bar_name_cpu(const char *s, uint16_t bg)
     p = num + str_len(num);
     *p++ = '%';
     *p = 0;
-    w = str_len(num) * 9u;
+    w = text_mid_w(num);
     lcd_fill(0, 0, 240, BAR_H, bg);
-    text_mid(8, (BAR_H - 11u) / 2u, b, C_BG, bg);
-    text_mid(232u - w, (BAR_H - 11u) / 2u, num, C_BG, bg);
+    text_mid_field(8, (BAR_H - 11u) / 2u, b, C_BG, bg, 0);
+    text_mid_field(232u - w, (BAR_H - 11u) / 2u, num, C_BG, bg, 0);
 }
 
 static void header_draw(void)

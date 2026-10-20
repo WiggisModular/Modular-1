@@ -211,7 +211,7 @@ typedef struct {
     const sig_t *sum_src[ENG_MAX_CABLES];
     struct { uint8_t note; int32_t vel; } held[MAX_HELD];
     uint8_t nheld;
-    struct { int32_t pitch, gate, vel; } voice;
+    struct { int32_t pitch, gate, vel, root; } voice;      /* root: the scale's root note as a pitch CV (the arpeggiator's ROOT) */
     uint32_t clk_seen;
 } eng_t;
 
@@ -590,6 +590,7 @@ static void m_fm1(node_t *nd, uint32_t n)
     fill(nd->out[FM1_O_K2], EF(nd, FM1_P_K2), n);
     fill(nd->out[FM1_O_K3], EF(nd, FM1_P_K3), n);
     fill(nd->out[FM1_O_K4], EF(nd, FM1_P_K4), n);
+    fill(nd->out[FM1_O_ROOT], E.voice.root, n);
     {                                   /* clock: a pulse of half a block per block that saw a tick; nothing without a source */
         uint32_t hi = E.clk_seen != clk_ticks ? (n + 1u) / 2u : 0u, i;
         E.clk_seen = clk_ticks;
@@ -770,6 +771,16 @@ static void m_scale(node_t *nd, uint32_t n)
     uint32_t i;
     for (i = 0; i < n; i++)
         out[i] = mul16(in[i], g) + o;
+}
+
+static void m_transpose(node_t *nd, uint32_t n)
+{
+    const sig_t *in = nd->in[TRANSPOSE_I_PITCH];
+    sig_t *out = nd->out[0];
+    int32_t shift = EF(nd, TRANSPOSE_P_SEMI) / 12 + EF(nd, TRANSPOSE_P_FINE) / 1200;      /* semitones and cents in octaves, as the oscillator's coarse / fine */
+    uint32_t i;
+    for (i = 0; i < n; i++)
+        out[i] = in[i] + shift;
 }
 
 /* 1 - exp(-4.6 / max(t * sr, 1)) in Q30, t in seconds Q16 */
@@ -1132,6 +1143,7 @@ static void process(node_t *nd, uint32_t n)
     case T_DELAY: m_delay(nd, n); break;
     case T_REVERB: m_reverb(nd, n); break;
     case T_CHIP: m_chip(nd, n); break;
+    case T_TRANSPOSE: m_transpose(nd, n); break;
     default: break;                      /* output: read by eng_render */
     }
 }
@@ -1220,6 +1232,13 @@ void eng_render(int32_t *left, int32_t *right, uint32_t total)
         }
     }
     eng_p = keep;
+}
+
+void eng_set_root_v(uint32_t v, uint32_t note)      /* the scale's root note of a voice (MIDI note), the Main module's root output */
+{
+    int32_t k = ((int32_t)note - 60) * 32768;
+    if (v < ENG_VOICES)
+        EV[v].voice.root = (k >= 0 ? k + 3 : k - 3) / 6;
 }
 
 void eng_note_on_v(uint32_t v, uint32_t note, int32_t vel_q16)     /* a note on one voice, whichever the panel has selected */

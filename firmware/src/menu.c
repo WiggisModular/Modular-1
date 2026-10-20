@@ -228,8 +228,8 @@ static void menu_row_draw(uint32_t row, uint32_t y, int hot)
     if (hot)
         lcd_fill(0, y, 4, 22, C_ACC);
     menu_value(row, val);
-    w = str_len(val) * 9u;
-    text_mid(228u - w, y + 5u, val, hot ? C_ACC : C_FG, bg);
+    w = text_mid_w(val);
+    text_mid_field(228u - w, y + 5u, val, hot ? C_ACC : C_FG, bg, 0);
 }
 
 /* the MANUAL tab (manual.c): MAN_VIS lines from man_top, SELECT scrolls */

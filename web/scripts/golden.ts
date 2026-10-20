@@ -55,6 +55,24 @@ kit('osc-morph', (add, wire) => {
   wire(m, 'out', mix, 'in4');
   wire(mix, 'out', out, 'l');
 });
+kit('transpose-root', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const t = add('transpose', 0, 0, { semi: 7, fine: 20 });
+  const o = add('osc', 0, 0, { wave: 2, level: 0.8 });
+  const tr = add('transpose', 0, 0, { semi: -5 }, { map: { p1: ['semi'], p2: [] }, att: [0.04, 0] });   // the root, under a slow LFO as well
+  const lfo = add('lfo', 0, 0, { wave: 1, rate: 0.9, depth: 1 });
+  const d = add('osc', 0, 0, { wave: 1, level: 0.8 });
+  const mix = add('mixer', 0, 0, { l1: 0.4, l2: 0.4 });
+  const out = add('output', 0, 0);
+  wire(kb, 'pitch', t, 'pitch');
+  wire(t, 'out', o, 'pitch');
+  wire(kb, 'root', tr, 'pitch');
+  wire(lfo, 'out', tr, 'p1');
+  wire(tr, 'out', d, 'pitch');
+  wire(o, 'out', mix, 'in1');
+  wire(d, 'out', mix, 'in2');
+  wire(mix, 'out', out, 'l');
+});
 const chipKit = (name: string, voices: Record<string, number>[]): void =>
   kit(name, (add, wire) => {
     const kb = add('fm1', 0, 0);

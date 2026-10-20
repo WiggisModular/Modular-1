@@ -23,6 +23,8 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         int32_t *o = &abuf[half * HALF_WORDS];
         if (eng_run) {
             arp_run(HALF_FRAMES);                       /* the arpeggiator plays the voice before the block is rendered */
+            for (i = 0; i < ENG_VOICES; i++)            /* the Main module's root output: each voice's arpeggiator root */
+                eng_set_root_v(i, AV[i].cfg.root);
             dr_run(HALF_FRAMES);                        /* the drum machine: voice 3, its sequencer and the panel's triggers */
             eng_render(eng_l, eng_r, HALF_FRAMES);
             dr_render(eng_l, eng_r, HALF_FRAMES);

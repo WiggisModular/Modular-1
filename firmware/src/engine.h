@@ -44,6 +44,7 @@ void eng_all_notes_off(void);
 void eng_voice_select(uint32_t v);
 void eng_voice_gain(uint32_t v, int32_t q16);        /* the mixer: a voice's level, Q16 (0 = muted) */
 uint32_t eng_voice(void);
+void eng_set_root_v(uint32_t v, uint32_t note);
 void eng_note_on_v(uint32_t v, uint32_t note, int32_t vel_q16);
 void eng_note_off_v(uint32_t v, uint32_t note);
 void eng_all_notes_off_v(uint32_t v);

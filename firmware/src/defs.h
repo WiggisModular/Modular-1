@@ -3,7 +3,7 @@
 #pragma once
 #include <stdint.h>
 
-#define N_TYPES 14
+#define N_TYPES 15
 enum {
     T_FM1,
     T_OSC,
@@ -19,6 +19,7 @@ enum {
     T_REVERB,
     T_OUTPUT,
     T_CHIP,
+    T_TRANSPOSE,
 };
 
 /* fm1: Main */
@@ -30,12 +31,13 @@ enum {
 #define FM1_O_K3 5
 #define FM1_O_K4 6
 #define FM1_O_CLOCK 7
+#define FM1_O_ROOT 8
 #define FM1_P_K1 0
 #define FM1_P_K2 1
 #define FM1_P_K3 2
 #define FM1_P_K4 3
 #define FM1_NIN 0
-#define FM1_NOUT 8
+#define FM1_NOUT 9
 #define FM1_NPAR 4
 #define FM1_CVBASE -1
 
@@ -226,6 +228,18 @@ enum {
 #define CHIP_NPAR 8
 #define CHIP_CVBASE 1
 
+/* transpose: Transpose */
+#define TRANSPOSE_I_PITCH 0
+#define TRANSPOSE_I_P1 1
+#define TRANSPOSE_I_P2 2
+#define TRANSPOSE_O_OUT 0
+#define TRANSPOSE_P_SEMI 0
+#define TRANSPOSE_P_FINE 1
+#define TRANSPOSE_NIN 3
+#define TRANSPOSE_NOUT 1
+#define TRANSPOSE_NPAR 2
+#define TRANSPOSE_CVBASE 1
+
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
 static const uint8_t DELAY_DIV_NUM[DELAY_NDIV] = {1, 1, 1, 3, 1, 3, 1, 3, 2, 5, 4};
@@ -239,7 +253,7 @@ static const uint8_t CHIP_CHORD_NOTE[CHIP_NCHORD][4] = {{0, 12, 0, 0}, {0, 4, 7,
 static const uint8_t CHIP_GB_WAVE[32] = {8, 10, 11, 12, 13, 14, 15, 15, 15, 15, 14, 13, 12, 11, 10, 8, 7, 5, 4, 3, 2, 1, 0, 0, 0, 0, 1, 2, 3, 4, 5, 7};
 
 #define MAX_IN 6
-#define MAX_OUT 8
+#define MAX_OUT 9
 #define MAX_PAR 8
 
 typedef struct {
@@ -406,6 +420,16 @@ static const char *const CHIP_CH2[] = {"OFF", "ON", 0};
 static const char *const CHIP_CH3[] = {"OCTAVE", "MAJOR", "MINOR", "POWER", "SUS4", "DIM", "MAJ7", "MIN7", "DOM7", "MAJOR+OCT", 0};
 static const uint8_t CHIP_MORPH[] = {0, 0, 0, 0, 0, 0, 0, 0};
 static const char *const *const CHIP_CH[] = {CHIP_CH0, CHIP_CH1, CHIP_CH2, CHIP_CH3, 0, 0, 0, 0};
+static const char *const TRANSPOSE_INNAMES[] = {"PITCH", "P1", "P2"};
+static const int32_t TRANSPOSE_MIN[] = {-3145728, -6553600};
+static const int32_t TRANSPOSE_MAX[] = {3145728, 6553600};
+static const int32_t TRANSPOSE_DEF[] = {0, 0};
+static const int32_t TRANSPOSE_INC[] = {65536, 131072};
+static const char *const TRANSPOSE_PN[] = {"SEMI", "FINE"};
+static const uint8_t TRANSPOSE_LOG[] = {0, 0};
+static const char *const TRANSPOSE_UNIT[] = {"ST", "CT"};
+static const uint8_t TRANSPOSE_MORPH[] = {0, 0};
+static const char *const *const TRANSPOSE_CH[] = {0, 0};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, FM1_CVBASE, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH, FM1_MORPH},   /* fm1 */
@@ -422,4 +446,5 @@ static const def_t DEFS[N_TYPES] = {
     {REVERB_NIN, REVERB_NOUT, REVERB_NPAR, REVERB_CVBASE, REVERB_MIN, REVERB_MAX, REVERB_DEF, REVERB_INC, "REVERB", REVERB_PN, REVERB_INNAMES, REVERB_LOG, REVERB_UNIT, REVERB_CH, REVERB_MORPH},   /* reverb */
     {OUTPUT_NIN, OUTPUT_NOUT, OUTPUT_NPAR, OUTPUT_CVBASE, OUTPUT_MIN, OUTPUT_MAX, OUTPUT_DEF, OUTPUT_INC, "OUTPUT", OUTPUT_PN, OUTPUT_INNAMES, OUTPUT_LOG, OUTPUT_UNIT, OUTPUT_CH, OUTPUT_MORPH},   /* output */
     {CHIP_NIN, CHIP_NOUT, CHIP_NPAR, CHIP_CVBASE, CHIP_MIN, CHIP_MAX, CHIP_DEF, CHIP_INC, "CHIP OSC", CHIP_PN, CHIP_INNAMES, CHIP_LOG, CHIP_UNIT, CHIP_CH, CHIP_MORPH},   /* chip */
+    {TRANSPOSE_NIN, TRANSPOSE_NOUT, TRANSPOSE_NPAR, TRANSPOSE_CVBASE, TRANSPOSE_MIN, TRANSPOSE_MAX, TRANSPOSE_DEF, TRANSPOSE_INC, "TRANSPOSE", TRANSPOSE_PN, TRANSPOSE_INNAMES, TRANSPOSE_LOG, TRANSPOSE_UNIT, TRANSPOSE_CH, TRANSPOSE_MORPH},   /* transpose */
 };

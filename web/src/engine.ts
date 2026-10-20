@@ -28,7 +28,7 @@ export class Engine {
   private order: Node[] = [];
   private outputs: Node[] = [];
   private held: { note: number; vel: number }[] = [];
-  readonly voice: Voice = { pitch: 0, gate: 0, velocity: 0, clock: false };
+  readonly voice: Voice = { pitch: 0, gate: 0, velocity: 0, clock: false, root: 0 };
   private ticks = 0;
   private clockOn = true;
 
@@ -145,6 +145,11 @@ export class Engine {
 
   clockRun(on: boolean): void {
     this.clockOn = on;
+  }
+
+  /** the scale's root note (MIDI note number, 60 = C4): the Main module's root output */
+  setRoot(note: number): void {
+    this.voice.root = (note - 60) / 12;
   }
 
   allNotesOff(): void {

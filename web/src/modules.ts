@@ -10,6 +10,8 @@ export interface Voice {
   velocity: number;
   /** a clock tick (24 per quarter note) falls in this block */
   clock: boolean;
+  /** the root note of the scale (the arpeggiator's ROOT setting on the FM-1), octaves relative to middle C */
+  root: number;
 }
 
 export interface Ctx {
@@ -84,7 +86,7 @@ const fm1: ModuleImpl<null> = {
     type: 'fm1',
     label: 'Main',
     inputs: [],
-    outputs: [control('pitch'), gate('gate'), control('vel'), ...knobNames.map(control), gate('clock')],
+    outputs: [control('pitch'), gate('gate'), control('vel'), ...knobNames.map(control), gate('clock'), control('root')],
     params: [...knobNames.map((n) => param(n, 0, 1, 0.5, { step: 0.01 }))],
   },
   init: () => null,
@@ -97,6 +99,7 @@ const fm1: ModuleImpl<null> = {
     const hi = c.voice.clock ? Math.ceil(c.n / 2) : 0;
     c.out.clock.fill(1, 0, hi);
     c.out.clock.fill(0, hi, c.n);
+    c.out.root.fill(c.voice.root, 0, c.n);
   },
 };
 
@@ -367,6 +370,21 @@ const constant: ModuleImpl<null> = {
   init: () => null,
   process(c) {
     c.out.out.fill(c.p.value ?? 0, 0, c.n);
+  },
+};
+
+const transpose: ModuleImpl<null> = {
+  def: {
+    type: 'transpose',
+    label: 'Transpose',
+    inputs: [control('pitch')],
+    outputs: [control('out')],
+    params: [param('semi', -48, 48, 0, { step: 1, unit: 'st' }), param('fine', -100, 100, 0, { step: 1, unit: 'ct' })],
+  },
+  init: () => null,
+  process(c) {
+    const shift = (c.p.semi ?? 0) / 12 + (c.p.fine ?? 0) / 1200; // semitones and cents as a pitch CV (1 V / octave)
+    for (let i = 0; i < c.n; i++) c.out.out[i] = c.inp.pitch[i] + shift;
   },
 };
 
@@ -684,7 +702,7 @@ const output: ModuleImpl<null> = {
   },
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, chip];
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, chip, transpose];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an

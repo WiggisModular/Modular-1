@@ -10,7 +10,7 @@
     in {
       devShells.${system}.default = pkgs.mkShell {
         packages = with pkgs; [
-          (python3.withPackages (ps: [ ps.mido ps.python-rtmidi ]))
+          (python3.withPackages (ps: [ ps.mido ps.python-rtmidi ps.pillow ps.fonttools ]))
           nodejs
           git
           curl

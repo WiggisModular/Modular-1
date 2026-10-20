@@ -554,3 +554,54 @@ describe('delay sync and ping-pong', () => {
     expect(a.r[127]).toBeGreaterThan(0.4);
   });
 });
+
+describe('transpose and the root output', () => {
+  /** keys -> (transpose) -> osc (sine) -> output; returns the dominant frequency of a held C4 */
+  function pitchOf(patchFn: (add: (t: string, x: number, y: number, p?: Record<string, number>) => number, wire: (a: number, ap: string, b: number, bp: string) => void) => void, setup?: (e: Engine) => void): number {
+    const e = new Engine(SR);
+    e.load(make('t', patchFn));
+    setup?.(e);
+    e.noteOn(60, 1);
+    const l = new Float32Array(SR);
+    const r = new Float32Array(SR);
+    e.render(l, r);
+    let cross = 0;
+    for (let i = 1; i < l.length; i++) if (l[i - 1] < 0 && l[i] >= 0) cross++;
+    return cross; // zero crossings in one second = Hz
+  }
+  const via = (semi: number, fine = 0, src = 'pitch') => (add: Parameters<Parameters<typeof make>[1]>[0], wire: Parameters<Parameters<typeof make>[1]>[1]) => {
+    const kb = add('fm1', 0, 0);
+    const t = add('transpose', 0, 0, { semi, fine });
+    const o = add('osc', 0, 0, { wave: 0, level: 0.8 });
+    const out = add('output', 0, 0);
+    wire(kb, src, t, 'pitch');
+    wire(t, 'out', o, 'pitch');
+    wire(o, 'out', out, 'l');
+  };
+  it('shifts the pitch by semitones and cents', () => {
+    const base = pitchOf(via(0));
+    expect(base).toBeGreaterThan(260);
+    expect(base).toBeLessThan(264); // C4
+    expect(pitchOf(via(12))).toBeGreaterThan(2 * base - 3);
+    expect(pitchOf(via(12))).toBeLessThan(2 * base + 3);
+    const fifth = pitchOf(via(7));
+    expect(fifth / base).toBeGreaterThan(1.49);
+    expect(fifth / base).toBeLessThan(1.51);
+    expect(pitchOf(via(-12)) / base).toBeGreaterThan(0.49);
+    expect(pitchOf(via(0, 100)) / base).toBeGreaterThan(1.055);
+  });
+  it('its semitones take a parameter input like any module (p1 steers semi)', () => {
+    const m = DEFS.transpose;
+    expect(m.paramInputs).toBe(true);
+    expect(m.params.map((p) => p.name)).toEqual(['semi', 'fine']);
+  });
+  it('the Main module has a root output that carries the scale root (C4 = 0 V, an octave up = 1 V)', () => {
+    expect(DEFS.fm1.outputs.map((o) => o.name).slice(-2)).toEqual(['clock', 'root']);
+    const c4 = pitchOf(via(0, 0, 'root'));                       // root 0 V -> C4
+    expect(c4).toBeGreaterThan(260);
+    expect(c4).toBeLessThan(264);
+    const a4 = pitchOf(via(0, 0, 'root'), (e) => e.setRoot(69)); // A4
+    expect(a4).toBeGreaterThan(438);
+    expect(a4).toBeLessThan(442);
+  });
+});

@@ -326,15 +326,54 @@ P('FM Bell', (b) => {
   return ['o1.pm', 'env.d', 'reverb.mix', 'delay.mix'];
 });
 // ---- effects and textures
-P('Zap', (b) => {
-  const a = b.src('osc', { wave: TRI, level: 0.8 }, 'o0');
-  const pe = b.add('adsr', { a: 0.001, d: 0.14, s: 0, r: 0.1 }, 2, 'penv');
-  const sc = b.add('scale', { gain: 2.5 }, 2, 'sweep');
-  b.w(b.kb, 'gate', pe, 'gate');
-  b.w(pe, 'env', sc, 'in');
-  b.w(sc, 'out', a, 'pitch');
-  std(b, [{ id: a }], { env: [0.001, 0.25, 0, 0.1], delay: { time: 160, fb: 0.4, mix: 0.2 } });
-  return ['penv.d', 'sweep.gain', 'env.d', 'delay.mix'];
+P('Hurdy Gurdy', (b) => {
+  // the melody string: two detuned unison strings, a reedy low pass; the wheel never stops, so the note ends at once
+  const a = b.src('osc', { wave: SAW, fine: -7, level: 0.8 }, 'o0');
+  const c = b.src('osc', { wave: SQR, pw: 0.32, fine: 7, level: 0.7 }, 'o1');
+  const mm = b.add('mixer', { l1: 0.55, l2: 0.4 }, 2, 'mix');
+  b.w(a, 'out', mm, 'in1');
+  b.w(c, 'out', mm, 'in2');
+  const flt = b.add('filter', { cutoff: 2600, res: 0.32, cvamt: 1, track: 0 }, 3, 'filter');
+  b.w(mm, 'out', flt, 'in');
+  const env = b.add('adsr', { a: 0.008, d: 0.05, s: 1, r: 0.05 }, 4, 'env');
+  b.w(b.kb, 'gate', env, 'gate');
+  const vca = b.add('vca', { gain: 1 }, 4, 'vca');
+  b.w(flt, 'lp12', vca, 'in');
+  b.w(env, 'env', vca, 'cv');
+  // the buzzing bridge (trompette): noise through a band pass, loud at the start of a note, a little of it all the time
+  const n = b.add('noise', { level: 1 }, 1, 'n0');
+  const bf = b.add('filter', { cutoff: 2300, res: 0.55, cvamt: 0, track: 0 }, 3, 'bzf');
+  b.w(n, 'out', bf, 'in');
+  const be = b.add('adsr', { a: 0.001, d: 0.16, s: 0.14, r: 0.05 }, 4, 'benv');
+  b.w(b.kb, 'gate', be, 'gate');
+  const bz = b.add('vca', { gain: 0.5 }, 4, 'bz');
+  b.w(bf, 'bp', bz, 'in');
+  b.w(be, 'env', bz, 'cv');
+  // the drone strings: tonic and fifth below, always the same pitch, fading in and out with the playing
+  const d1 = b.add('osc', { wave: SAW, coarse: -12, fine: 3, level: 0.7 }, 1, 'd1');
+  const d2 = b.add('osc', { wave: SAW, coarse: -17, fine: -4, level: 0.7 }, 1, 'd2');
+  const d3 = b.add('osc', { wave: TRI, coarse: -24, level: 0.8 }, 1, 'd3');
+  const dm = b.add('mixer', { l1: 0.4, l2: 0.4, l3: 0.35 }, 2, 'dmix');
+  b.w(d1, 'out', dm, 'in1');
+  b.w(d2, 'out', dm, 'in2');
+  b.w(d3, 'out', dm, 'in3');
+  const df = b.add('filter', { cutoff: 900, res: 0.2, cvamt: 0, track: 0 }, 3, 'dflt');
+  b.w(dm, 'out', df, 'in');
+  const de = b.add('adsr', { a: 0.25, d: 0.2, s: 1, r: 0.9 }, 4, 'denv');
+  b.w(b.kb, 'gate', de, 'gate');
+  const dr = b.add('vca', { gain: 0.8 }, 4, 'dr');
+  b.w(df, 'lp12', dr, 'in');
+  b.w(de, 'env', dr, 'cv');
+  // the body of the instrument
+  const mf = b.add('mixer', { l1: 0.7, l2: 0.35, l3: 0.5 }, 5, 'fin');
+  b.w(vca, 'out', mf, 'in1');
+  b.w(bz, 'out', mf, 'in2');
+  b.w(dr, 'out', mf, 'in3');
+  const r = b.add('reverb', { size: 0.4, damp: 0.6, mix: 0.2 }, 5, 'reverb');
+  b.w(mf, 'out', r, 'in');
+  const out = b.add('output', { level: 0.7 }, 6, 'out');
+  b.w(r, 'out', out, 'l');
+  return ['filter.cutoff', 'bz.gain', 'reverb.mix', 'dr.gain'];   // cutoff, buzz, body, drones
 });
 P('Siren', (b) => {
   const a = b.src('osc', { wave: SIN, coarse: 12, level: 0.8 }, 'o0');
