@@ -5,7 +5,7 @@
   {
    "id": "modular-1",
    "name": "Modular-1",
-   "version": "M1-1.1.0",
+   "version": "M1-1.1.1",
    "author": "morgulbrut",
    "license": "GPL-3.0-only",
    "about": "A Nord Modular style patchable synth: two patch voices, a drum machine, arpeggiators, a mixer and a settings menu.",

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 1.1.1 (firmware `M1-1.1.1`, app 1.1.1)
+
+### Added
+- The larger text on the display (page titles, values, menu rows, the top bar) is set in the **Beiruti** typeface (SIL OFL 1.1, rendered to anti-aliased bitmaps by `tools/gen_font_mid.py`) instead of the enlarged 5x7 pixel font; 11 pixel rows, proportional letter widths with the font's kerning, right and centred texts aligned by their real width. The small text stays pixel font. It has lower case too (descenders are cut one pixel short to fit the cell), so mixed-case text such as the scale names shows as written.
+- **Transpose** module: shifts a pitch CV by semitones (-48..48) and cents; the semitones take the usual parameter inputs, so an LFO or a sequence can steer the interval.
+- **Root** output on the Main module (after `clock`): the arpeggiator's ROOT setting (MELODY page) of the voice as a pitch CV, C4 = 0 V, 1 V per octave, so an oscillator can sit on the scale's root while the arpeggio plays. In the web editor (no arpeggiator) it is C4 unless set through `Engine.setRoot`. Old patches and stored states are unaffected (the new module type and port are appended).
+- Factory patch **Hurdy Gurdy** (slot 23, replaces `Zap`): two unison melody strings through a reedy low pass that stop the moment the key is released, a buzzing bridge (noise through a band pass, loud at the start of a note) and three drone strings (C2, G2, C3) that fade in and out with the playing. K1 cutoff, K2 buzz, K3 body (reverb), K4 drones. Host-tested only (golden test), not heard on the device.
+
+### Changed
+- The factory patch `Zap` is gone (the patch bank has 32 slots); `Hurdy Gurdy` took its place.
+
+### Not verified
+- Host-tested and previewed on the host only (`tools/arp_test.sh`, `tools/golden.sh`, the web tests); not flashed, the new font, the Transpose module and the Hurdy Gurdy patch have not been seen or heard on a real FM-1.
+
 ## 1.1.0 (firmware `M1-1.1.0`, app 1.1.0)
 
 ### Added
