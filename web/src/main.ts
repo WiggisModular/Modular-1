@@ -82,7 +82,7 @@ const sink = {
   },
 };
 
-const editor = new Editor($('canvas'), loadSaved() ?? PRESETS['Subtractive saw'](), {
+const editor = new Editor($('canvas'), loadSaved() ?? PRESETS['Bright Saw'](), {
   onStructure(p) {
     host.setPatch(p);
     queueSave(p);

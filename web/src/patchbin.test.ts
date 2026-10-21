@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
 import { encodePatch, MAX_CABLES, TYPE_ORDER } from './patchbin';
-import { PRESETS } from './presets';
+import { make, PRESETS } from './presets';
 
 describe('binary patch format', () => {
   it('encodes every preset with the documented layout', () => {
@@ -21,7 +21,13 @@ describe('binary patch format', () => {
   });
 
   it('writes parameters as Q16.16 and cables as indices', () => {
-    const p = PRESETS['Subtractive saw']();
+    const p = make('saw', (add, wire) => {
+      const kb = add('fm1', 0, 0);
+      const o = add('osc', 0, 0, { wave: 2, level: 0.8 });
+      const out = add('output', 0, 0);
+      wire(kb, 'pitch', o, 'pitch');
+      wire(o, 'out', out, 'l');
+    });
     const b = encodePatch(p);
     // module 0 is the FM-1 panel (type byte + 4 parameters); module 1 osc starts right after
     const osc = 8 + 1 + 4 * DEFS.fm1.params.length;
