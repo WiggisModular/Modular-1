@@ -1,0 +1,4 @@
+The page, scripts and fm1_web.wasm here are the web build of fm1-emu by Joakim Eriksson, MIT (LICENSE-fm1-emu-MIT.txt):
+https://github.com/joakimeriksson/fm1-emu at commit 7856393bc82f2821a2ac70c0c9a93dd743465dcb
+Built with that repository's web/build.sh and copied here by web/scripts/sync-simulator.mjs (tools/build_simulator.sh).
+firmwares.json is this app's own catalog: the package it runs is ../firmware/modular-1.fwsc.
